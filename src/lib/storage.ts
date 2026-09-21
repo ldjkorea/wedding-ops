@@ -19,7 +19,7 @@ export const WORKSPACE_ID = '11111111-1111-1111-1111-111111111111';
 // 초기 시드 데이터 정의
 const INITIAL_WORKSPACE: Workspace = {
   id: WORKSPACE_ID,
-  name: '스튜디오 민규 (본식 스냅)',
+  name: '디어메모리 (Dear Memory)',
   created_at: new Date('2026-09-01').toISOString(),
   updated_at: new Date('2026-09-01').toISOString(),
 };
@@ -28,9 +28,9 @@ const INITIAL_PHOTOGRAPHERS: Photographer[] = [
   {
     id: '22222222-2222-2222-2222-222222222201',
     workspace_id: WORKSPACE_ID,
-    name: '민규 (대표)',
+    name: '한민규 (대표)',
     phone: '010-1234-5678',
-    notes: '대표작가 본인 / 1인 메인 스냅 담당',
+    notes: '디어메모리 대표 / 1인 메인 스냅 디렉팅',
     is_active: true,
     created_at: new Date('2026-09-01').toISOString(),
     updated_at: new Date('2026-09-01').toISOString(),
@@ -40,7 +40,7 @@ const INITIAL_PHOTOGRAPHERS: Photographer[] = [
     workspace_id: WORKSPACE_ID,
     name: '준호',
     phone: '010-9876-5432',
-    notes: '서브 스냅 전문 / 기동성 우수 / Sony A7M4',
+    notes: '디어메모리 크루 / 서브 스냅 전문 / 기동성 우수 / Sony A7M4',
     is_active: true,
     created_at: new Date('2026-09-01').toISOString(),
     updated_at: new Date('2026-09-01').toISOString(),
@@ -50,7 +50,7 @@ const INITIAL_PHOTOGRAPHERS: Photographer[] = [
     workspace_id: WORKSPACE_ID,
     name: '성민',
     phone: '010-5555-4444',
-    notes: '원판 및 정자세 연출 안정적 / 주말 고정 가능',
+    notes: '디어메모리 크루 / 원판 및 정자세 연출 안정적 / 주말 고정 가능',
     is_active: true,
     created_at: new Date('2026-09-01').toISOString(),
     updated_at: new Date('2026-09-01').toISOString(),
@@ -77,6 +77,15 @@ const INITIAL_VENUE_SPACES: VenueSpace[] = [
     name: '커티지홀',
     floor: '3층',
     notes: '천고 높음 / 버진로드 단상 없음 / 신부대기실 조명 따뜻한 편',
+    lighting_type: '밝은 채플형 (자연광 느낌 우드톤 + 웜화이트 핀조명)',
+    ceiling_height: '8m (천고 높음, 웅장한 목조 아치 구조)',
+    aisle_info: '24m (단상 없음, 평지 버진로드 / 하객석과 높이 동일)',
+    ceremony_interval: '90분 (촬영 시간 매우 여유로움)',
+    bridal_room_flow: '홀과 동일한 3층 바로 옆 (신부 이동 최단거리)',
+    photo_restrictions: '입장 직후 중앙 버진로드 침범 금지, 단상 위 삼각대 거치 불가',
+    parking_transport_info: '단독 건물 지하주차장 200대 (혼주 4대 무료) / 수인분당선 압구정로데오역 도보 8분',
+    latest_info_updated_at: '2026-09-20',
+    latest_info_source: '디어메모리 크루 현장 실사 및 웨딩홀 공식 최신 가이드',
     created_at: new Date('2026-09-01').toISOString(),
     updated_at: new Date('2026-09-01').toISOString(),
   },
@@ -87,11 +96,11 @@ const INITIAL_HALL_OBSERVATIONS: HallObservation[] = [
     id: '55555555-5555-5555-5555-555555555501',
     workspace_id: WORKSPACE_ID,
     venue_space_id: '44444444-4444-4444-4444-444444444401',
-    author: '민규 (대표)',
+    author: '한민규 (대표)',
     observed_at: '2026-09-10',
     source_type: 'direct',
-    category: 'must_caution',
-    observation_text: '입장 직후 조명이 급격히 어두워져 노출 변화가 큼. 중앙 통로 이동 시 하객 동선과 겹치므로 사전 위치 선점 필수.',
+    category: 'caution',
+    observation_text: '입장 직후 조명이 급격히 어두워져 노출 편차가 큽니다. 중앙 통로 이동 시 하객 동선과 겹치므로 사전 사이드 위치 선점이 필수입니다.',
     action_note: '신부입장 2분 전 사이드 라인으로 미리 이동할 것',
     created_at: new Date('2026-09-10T14:00:00Z').toISOString(),
   },
@@ -99,13 +108,37 @@ const INITIAL_HALL_OBSERVATIONS: HallObservation[] = [
     id: '55555555-5555-5555-5555-555555555502',
     workspace_id: WORKSPACE_ID,
     venue_space_id: '44444444-4444-4444-4444-444444444401',
-    author: '민규 (대표)',
+    author: '준호 (크루)',
     observed_at: '2026-09-15',
     source_type: 'direct',
-    category: 'team_routine',
-    observation_text: '축가 시 서브작가는 우측 계단 위에서 부모님 표정과 신랑신부 뒷모습을 와이드로 동시 포착하는 구도가 가장 반응이 좋음.',
-    action_note: '서브작가 70-200mm 마운트 권장',
+    category: 'tip',
+    observation_text: '축가 시 서브작가는 우측 계단 위에서 부모님 표정과 신랑신부 뒷모습을 와이드로 동시 포착하는 구도가 반응이 가장 좋습니다.',
+    action_note: '서브작가 70-200mm 망원 렌즈 마운트 권장',
     created_at: new Date('2026-09-15T15:30:00Z').toISOString(),
+  },
+  {
+    id: '55555555-5555-5555-5555-555555555503',
+    workspace_id: WORKSPACE_ID,
+    venue_space_id: '44444444-4444-4444-4444-444444444401',
+    author: '한민규 (대표)',
+    observed_at: '2026-09-18',
+    source_type: 'direct',
+    category: 'advantage',
+    observation_text: '신부대기실 천장 간접등과 생화 장식이 아주 풍성하여 85mm F1.4 인물 클로즈업 사진이 매우 화사하고 맑게 나옵니다.',
+    action_note: '신부 독사진 시 대기실 우측 자연광 각도 활용',
+    created_at: new Date('2026-09-18T11:00:00Z').toISOString(),
+  },
+  {
+    id: '55555555-5555-5555-5555-555555555504',
+    workspace_id: WORKSPACE_ID,
+    venue_space_id: '44444444-4444-4444-4444-444444444401',
+    author: '성민 (크루)',
+    observed_at: '2026-09-19',
+    source_type: 'direct',
+    category: 'disadvantage',
+    observation_text: '로비가 조금 좁아서 예식 시작 30분 전 하객이 몰릴 때 신랑 로비 컷 촬영 동선이 자주 끊깁니다.',
+    action_note: '신랑 하객맞이 컷은 40분 전 일찍 선점해 촬영 진행',
+    created_at: new Date('2026-09-19T16:00:00Z').toISOString(),
   },
 ];
 
@@ -362,7 +395,7 @@ export const DataStore = {
     return loadState().venue_spaces.find((vs) => vs.id === id);
   },
 
-  addVenueSpace(data: { venue_id: string; name: string; floor?: string; notes?: string }): VenueSpace {
+  addVenueSpace(data: Partial<VenueSpace> & { venue_id: string; name: string }): VenueSpace {
     const state = loadState();
     const newSpace: VenueSpace = {
       id: crypto.randomUUID ? crypto.randomUUID() : `space-${Date.now()}`,
@@ -371,12 +404,35 @@ export const DataStore = {
       name: data.name,
       floor: data.floor || '',
       notes: data.notes || '',
+      lighting_type: data.lighting_type || '밝은 채플형',
+      ceiling_height: data.ceiling_height || '천고 보통',
+      aisle_info: data.aisle_info || '버진로드 20m 내외',
+      ceremony_interval: data.ceremony_interval || '80분',
+      bridal_room_flow: data.bridal_room_flow || '동일층 위치',
+      photo_restrictions: data.photo_restrictions || '식장 안내 규정 준수',
+      parking_transport_info: data.parking_transport_info || '주차 가능',
+      latest_info_updated_at: new Date().toISOString().split('T')[0],
+      latest_info_source: data.latest_info_source || '디어메모리 크루 현장 기록',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
     state.venue_spaces.push(newSpace);
     saveState(state);
     return newSpace;
+  },
+
+  updateVenueSpace(id: string, data: Partial<VenueSpace>): VenueSpace {
+    const state = loadState();
+    const idx = state.venue_spaces.findIndex((s) => s.id === id);
+    if (idx === -1) throw new Error('VenueSpace not found');
+    state.venue_spaces[idx] = {
+      ...state.venue_spaces[idx],
+      ...data,
+      latest_info_updated_at: new Date().toISOString().split('T')[0],
+      updated_at: new Date().toISOString(),
+    };
+    saveState(state);
+    return state.venue_spaces[idx];
   },
 
   // Jobs
@@ -620,9 +676,9 @@ export const DataStore = {
       ? state.photographers.find((p) => p.id === targetAssignment?.photographer_id)
       : null;
 
-    // 해당 홀의 주의사항 관찰 기록 가져오기
+    // 해당 홀의 주의사항 관찰 기록 가져오기 (must_caution 또는 caution)
     const cautions = state.hall_observations
-      .filter((o) => o.venue_space_id === job.venue_space_id && o.category === 'must_caution')
+      .filter((o) => o.venue_space_id === job.venue_space_id && (o.category === 'must_caution' || o.category === 'caution'))
       .map((o) => `- ${o.observation_text}${o.action_note ? ` (${o.action_note})` : ''}`);
 
     const shootDateObj = new Date(job.shoot_date);
@@ -713,27 +769,47 @@ export const DataStore = {
 
   isJobPackOutdated(jobId: string): { outdated: boolean; reason?: string } {
     const state = loadState();
-    const versions = state.job_pack_versions
-      .filter((v) => v.job_id === jobId)
-      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    const versions = state.job_pack_versions.filter((v) => v.job_id === jobId);
 
     if (versions.length === 0) {
       return { outdated: false };
     }
 
-    const latestVersion = versions[0];
-    const latestCreatedTime = new Date(latestVersion.created_at).getTime();
+    const latestVersion = versions[versions.length - 1];
+    const currentJob = state.jobs.find((j) => j.id === jobId);
+    const snap = latestVersion.snapshot_job_data as Partial<Job> | undefined;
 
-    // 최신 Job Pack 생성 시점 이후의 change_events가 있는지 확인
+    // 1. 최신 버전 스냅샷과 현재 Job 데이터의 핵심 필드 직접 비교
+    const diffs: string[] = [];
+    if (currentJob && snap) {
+      if (currentJob.ceremony_time !== snap.ceremony_time) {
+        diffs.push(`예식시각(${snap.ceremony_time} ➜ ${currentJob.ceremony_time})`);
+      }
+      if (currentJob.arrival_time !== snap.arrival_time) {
+        diffs.push(`도착시각(${snap.arrival_time} ➜ ${currentJob.arrival_time})`);
+      }
+      if (currentJob.shoot_date !== snap.shoot_date) {
+        diffs.push(`촬영일자(${snap.shoot_date} ➜ ${currentJob.shoot_date})`);
+      }
+      if (currentJob.venue_id !== snap.venue_id || currentJob.venue_space_id !== snap.venue_space_id) {
+        diffs.push('웨딩홀/공간');
+      }
+      if (currentJob.special_requests !== snap.special_requests) {
+        diffs.push('특별요청');
+      }
+    }
+
+    // 2. 최신 Job Pack 생성 시점 이후의 change_events 확인
+    const latestCreatedTime = new Date(latestVersion.created_at).getTime();
     const newerChanges = state.change_events.filter(
-      (c) => c.job_id === jobId && new Date(c.created_at).getTime() > latestCreatedTime
+      (c) => c.job_id === jobId && new Date(c.created_at).getTime() >= latestCreatedTime
     );
 
-    if (newerChanges.length > 0) {
-      const descriptions = newerChanges.map((c) => c.description).join(', ');
+    if (diffs.length > 0 || newerChanges.length > 0) {
+      const reasons = diffs.length > 0 ? diffs.join(', ') : newerChanges.map((c) => c.description).join(', ');
       return {
         outdated: true,
-        reason: `촬영 안내문(v${latestVersion.version_number}) 생성 이후 정보가 변경되었습니다: ${descriptions}`,
+        reason: `촬영 안내문(v${latestVersion.version_number}) 생성 이후 정보가 변경되었습니다: ${reasons}`,
       };
     }
 

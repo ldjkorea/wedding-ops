@@ -49,6 +49,16 @@ export type VenueSpace = {
   name: string;
   floor?: string | null;
   notes?: string | null;
+  // 작가 전용 최신 팩트시트 필드
+  lighting_type?: string | null; // 예: 밝은 채플형 (자연광 느낌 우드톤)
+  ceiling_height?: string | null; // 예: 7m (천고 높음)
+  aisle_info?: string | null; // 예: 25m (단상 없음, 평지 버진로드)
+  ceremony_interval?: string | null; // 예: 90분 (여유로움)
+  bridal_room_flow?: string | null; // 예: 홀 바로 옆 동일층 (동선 최단)
+  photo_restrictions?: string | null; // 예: 단상 위 삼각대 금지, 입장 시 버진로드 진입 자제
+  parking_transport_info?: string | null; // 예: 단독 건물 주차 300대 / 강남구청역 도보 10분
+  latest_info_updated_at?: string | null;
+  latest_info_source?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -176,7 +186,14 @@ export type Delivery = {
   updated_at: string;
 };
 
-export type HallObservationCategory = 'must_caution' | 'team_routine' | 'next_check';
+export type HallObservationCategory =
+  | 'must_caution' // 기존 하위호환: 주의사항
+  | 'team_routine' // 기존 하위호환: 루틴/팁
+  | 'next_check' // 기존 하위호환: 확인사항
+  | 'advantage' // [신규] 장점 / 스냅 명당 스팟
+  | 'disadvantage' // [신규] 단점 / 특이점
+  | 'caution' // [신규] 촬영 주의사항
+  | 'tip'; // [신규] 실전 팁 & 렌즈 추천
 export type HallObservationSource = 'direct' | 'teammate' | 'external';
 
 export type HallObservation = {

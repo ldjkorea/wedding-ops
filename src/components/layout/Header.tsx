@@ -24,8 +24,8 @@ export function Header() {
             <span className="font-bold text-slate-900 tracking-tight text-base block leading-none">
               스냅오피스
             </span>
-            <span className="text-[10px] text-slate-500 font-medium leading-tight">
-              스튜디오 민규 · 대표 모드
+            <span className="text-[10px] text-indigo-700 font-semibold leading-tight">
+              디어메모리 · 한민규 대표
             </span>
           </div>
         </Link>
@@ -39,8 +39,8 @@ export function Header() {
             <RotateCcw className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">시드 리셋</span>
           </button>
-          <div className="w-7 h-7 rounded-full bg-slate-200 flex items-center justify-center text-xs font-semibold text-slate-700 border border-slate-300">
-            민
+          <div className="w-7 h-7 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs font-semibold border border-indigo-700">
+            한
           </div>
         </div>
       </div>
