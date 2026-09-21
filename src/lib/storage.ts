@@ -57,90 +57,12 @@ const INITIAL_PHOTOGRAPHERS: Photographer[] = [
   },
 ];
 
-const INITIAL_VENUES: Venue[] = [
-  {
-    id: '33333333-3333-3333-3333-333333333301',
-    workspace_id: WORKSPACE_ID,
-    name: '더채플앳청담',
-    address: '서울 강남구 선릉로 757',
-    notes: '자연광 느낌의 우드톤 채플형 웨딩홀 / 단독 건물',
-    created_at: new Date('2026-09-01').toISOString(),
-    updated_at: new Date('2026-09-01').toISOString(),
-  },
-];
+import {
+  INITIAL_VENUES,
+  INITIAL_VENUE_SPACES,
+  INITIAL_HALL_OBSERVATIONS,
+} from '@/lib/venueData';
 
-const INITIAL_VENUE_SPACES: VenueSpace[] = [
-  {
-    id: '44444444-4444-4444-4444-444444444401',
-    workspace_id: WORKSPACE_ID,
-    venue_id: '33333333-3333-3333-3333-333333333301',
-    name: '커티지홀',
-    floor: '3층',
-    notes: '천고 높음 / 버진로드 단상 없음 / 신부대기실 조명 따뜻한 편',
-    lighting_type: '밝은 채플형 (자연광 느낌 우드톤 + 웜화이트 핀조명)',
-    ceiling_height: '8m (천고 높음, 웅장한 목조 아치 구조)',
-    aisle_info: '24m (단상 없음, 평지 버진로드 / 하객석과 높이 동일)',
-    ceremony_interval: '90분 (촬영 시간 매우 여유로움)',
-    bridal_room_flow: '홀과 동일한 3층 바로 옆 (신부 이동 최단거리)',
-    photo_restrictions: '입장 직후 중앙 버진로드 침범 금지, 단상 위 삼각대 거치 불가',
-    parking_transport_info: '단독 건물 지하주차장 200대 (혼주 4대 무료) / 수인분당선 압구정로데오역 도보 8분',
-    latest_info_updated_at: '2026-09-20',
-    latest_info_source: '디어메모리 크루 현장 실사 및 웨딩홀 공식 최신 가이드',
-    created_at: new Date('2026-09-01').toISOString(),
-    updated_at: new Date('2026-09-01').toISOString(),
-  },
-];
-
-const INITIAL_HALL_OBSERVATIONS: HallObservation[] = [
-  {
-    id: '55555555-5555-5555-5555-555555555501',
-    workspace_id: WORKSPACE_ID,
-    venue_space_id: '44444444-4444-4444-4444-444444444401',
-    author: '한민규 (대표)',
-    observed_at: '2026-09-10',
-    source_type: 'direct',
-    category: 'caution',
-    observation_text: '입장 직후 조명이 급격히 어두워져 노출 편차가 큽니다. 중앙 통로 이동 시 하객 동선과 겹치므로 사전 사이드 위치 선점이 필수입니다.',
-    action_note: '신부입장 2분 전 사이드 라인으로 미리 이동할 것',
-    created_at: new Date('2026-09-10T14:00:00Z').toISOString(),
-  },
-  {
-    id: '55555555-5555-5555-5555-555555555502',
-    workspace_id: WORKSPACE_ID,
-    venue_space_id: '44444444-4444-4444-4444-444444444401',
-    author: '준호 (크루)',
-    observed_at: '2026-09-15',
-    source_type: 'direct',
-    category: 'tip',
-    observation_text: '축가 시 서브작가는 우측 계단 위에서 부모님 표정과 신랑신부 뒷모습을 와이드로 동시 포착하는 구도가 반응이 가장 좋습니다.',
-    action_note: '서브작가 70-200mm 망원 렌즈 마운트 권장',
-    created_at: new Date('2026-09-15T15:30:00Z').toISOString(),
-  },
-  {
-    id: '55555555-5555-5555-5555-555555555503',
-    workspace_id: WORKSPACE_ID,
-    venue_space_id: '44444444-4444-4444-4444-444444444401',
-    author: '한민규 (대표)',
-    observed_at: '2026-09-18',
-    source_type: 'direct',
-    category: 'advantage',
-    observation_text: '신부대기실 천장 간접등과 생화 장식이 아주 풍성하여 85mm F1.4 인물 클로즈업 사진이 매우 화사하고 맑게 나옵니다.',
-    action_note: '신부 독사진 시 대기실 우측 자연광 각도 활용',
-    created_at: new Date('2026-09-18T11:00:00Z').toISOString(),
-  },
-  {
-    id: '55555555-5555-5555-5555-555555555504',
-    workspace_id: WORKSPACE_ID,
-    venue_space_id: '44444444-4444-4444-4444-444444444401',
-    author: '성민 (크루)',
-    observed_at: '2026-09-19',
-    source_type: 'direct',
-    category: 'disadvantage',
-    observation_text: '로비가 조금 좁아서 예식 시작 30분 전 하객이 몰릴 때 신랑 로비 컷 촬영 동선이 자주 끊깁니다.',
-    action_note: '신랑 하객맞이 컷은 40분 전 일찍 선점해 촬영 진행',
-    created_at: new Date('2026-09-19T16:00:00Z').toISOString(),
-  },
-];
 
 const INITIAL_JOB: Job = {
   id: '66666666-6666-6666-6666-666666666601',
@@ -254,7 +176,7 @@ interface AppState {
   hall_observations: HallObservation[];
 }
 
-const STORAGE_KEY = 'wedding_ops_data_v1';
+const STORAGE_KEY = 'wedding_ops_data_v2';
 
 function getInitialState(): AppState {
   return {
@@ -282,13 +204,43 @@ function loadState(): AppState {
   }
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
+    // 구버전(v1) 데이터가 있는 경우 사용자 데이터 유지하면서 베뉴 DB 업그레이드
     if (!raw) {
+      const oldRaw = localStorage.getItem('wedding_ops_data_v1');
+      if (oldRaw) {
+        try {
+          const parsedOld = JSON.parse(oldRaw);
+          const migrated: AppState = {
+            ...getInitialState(),
+            ...parsedOld,
+            // 서울 20개소 대량 베뉴 DB로 갱신
+            venues: INITIAL_VENUES,
+            venue_spaces: INITIAL_VENUE_SPACES,
+            hall_observations: INITIAL_HALL_OBSERVATIONS,
+          };
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
+          inMemoryState = migrated;
+          return migrated;
+        } catch (mErr) {
+          console.error('Migration from v1 failed:', mErr);
+        }
+      }
       const init = getInitialState();
       localStorage.setItem(STORAGE_KEY, JSON.stringify(init));
       inMemoryState = init;
       return init;
     }
+
     inMemoryState = JSON.parse(raw);
+
+    // 저장된 베뉴 수가 최신(20개소)보다 적으면 최신 베뉴 및 공간/노하우 DB 병합
+    if (!inMemoryState.venues || inMemoryState.venues.length < INITIAL_VENUES.length) {
+      inMemoryState.venues = INITIAL_VENUES;
+      inMemoryState.venue_spaces = INITIAL_VENUE_SPACES;
+      inMemoryState.hall_observations = INITIAL_HALL_OBSERVATIONS;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(inMemoryState));
+    }
+
     return inMemoryState;
   } catch (e) {
     console.error('LocalStorage load failed, using fallback:', e);
