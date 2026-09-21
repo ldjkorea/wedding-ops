@@ -7,10 +7,11 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "npm run test:acceptance && npm run test:photographer && npm run test:phase3",
+    "test": "npm run test:acceptance && npm run test:photographer && npm run test:phase3 && npm run test:storage",
     "test:acceptance": "tsx scripts/acceptance-test.mjs",
     "test:photographer": "tsx scripts/test-photographer-lifecycle.mjs",
-    "test:phase3": "tsx scripts/test-phase3-calendar-ops.mjs"
+    "test:phase3": "tsx scripts/test-phase3-calendar-ops.mjs",
+    "test:storage": "tsx scripts/test-storage-adapters.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.1",

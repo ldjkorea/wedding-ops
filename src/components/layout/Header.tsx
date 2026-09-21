@@ -2,7 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { Camera, RotateCcw } from 'lucide-react';
+import { Camera, RotateCcw, Settings } from 'lucide-react';
 import { DataStore } from '@/lib/storage';
 
 export function Header() {
@@ -31,6 +31,14 @@ export function Header() {
         </Link>
 
         <div className="flex items-center gap-2">
+          <Link
+            href="/settings/storage"
+            title="데이터 저장소 설정 (로컬 / Google Sheets)"
+            className="flex items-center gap-1 text-xs text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 p-2 rounded-lg transition"
+          >
+            <Settings className="w-3.5 h-3.5" />
+          </Link>
+
           <button
             onClick={handleReset}
             title="초기 샘플 데이터로 리셋"

@@ -17,6 +17,19 @@ import {
   DashboardActionItem,
 } from '@/types/database';
 
+import {
+  AppState,
+  IStorageAdapter,
+  StorageProviderType,
+  StorageConfig,
+  StorageConnectionTestResult,
+} from './storage/types';
+import { LocalStorageAdapter, STORAGE_KEY_V2 } from './storage/LocalStorageAdapter';
+import { GoogleSheetsAdapter } from './storage/GoogleSheetsAdapter';
+import { getStorageConfig, saveStorageConfig } from './storage/config';
+
+export type { AppState, StorageConfig, StorageProviderType, StorageConnectionTestResult, IStorageAdapter };
+
 export const WORKSPACE_ID = '11111111-1111-1111-1111-111111111111';
 
 // 초기 시드 데이터 정의
@@ -164,24 +177,6 @@ const INITIAL_DELIVERIES: Delivery[] = [
   },
 ];
 
-interface AppState {
-  workspace: Workspace;
-  photographers: Photographer[];
-  venues: Venue[];
-  venue_spaces: VenueSpace[];
-  jobs: Job[];
-  assignments: Assignment[];
-  job_pack_versions: JobPackVersion[];
-  change_events: ChangeEvent[];
-  handovers: Handover[];
-  settlements: Settlement[];
-  payment_entries: PaymentEntry[];
-  deliveries: Delivery[];
-  hall_observations: HallObservation[];
-}
-
-const STORAGE_KEY = 'wedding_ops_data_v2';
-
 function getInitialState(): AppState {
   return {
     workspace: INITIAL_WORKSPACE,
@@ -200,66 +195,57 @@ function getInitialState(): AppState {
   };
 }
 
+// ==============================================================================
+// 스토리지 어댑터 인스턴스 초기화 및 활성 프로바이더 관리
+// ==============================================================================
+
+export const localAdapter = new LocalStorageAdapter(getInitialState);
+
+const initialConfig = getStorageConfig();
+export const sheetsAdapter = new GoogleSheetsAdapter(initialConfig.googleSheetsUrl || '', WORKSPACE_ID);
+
+let activeAdapter: IStorageAdapter = initialConfig.provider === 'google_sheets' ? sheetsAdapter : localAdapter;
 let inMemoryState: AppState = getInitialState();
+let isStateLoaded = false;
 
 function loadState(): AppState {
-  if (typeof window === 'undefined') {
-    return inMemoryState;
-  }
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    // 구버전(v1) 데이터가 있는 경우 사용자 데이터 유지하면서 베뉴 DB 업그레이드
-    if (!raw) {
-      const oldRaw = localStorage.getItem('wedding_ops_data_v1');
-      if (oldRaw) {
+  if (!isStateLoaded) {
+    if (activeAdapter.providerType === 'local') {
+      if (typeof window !== 'undefined') {
         try {
-          const parsedOld = JSON.parse(oldRaw);
-          const migrated: AppState = {
-            ...getInitialState(),
-            ...parsedOld,
-            // 서울 20개소 대량 베뉴 DB로 갱신
-            venues: INITIAL_VENUES,
-            venue_spaces: INITIAL_VENUE_SPACES,
-            hall_observations: INITIAL_HALL_OBSERVATIONS,
-          };
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
-          inMemoryState = migrated;
-          return migrated;
-        } catch (mErr) {
-          console.error('Migration from v1 failed:', mErr);
+          const raw = localStorage.getItem(STORAGE_KEY_V2);
+          if (raw) {
+            inMemoryState = JSON.parse(raw);
+          } else {
+            inMemoryState = getInitialState();
+            localStorage.setItem(STORAGE_KEY_V2, JSON.stringify(inMemoryState));
+          }
+        } catch (e) {
+          console.error('LocalStorage loadState failed, using initial seed:', e);
+          inMemoryState = getInitialState();
         }
       }
-      const init = getInitialState();
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(init));
-      inMemoryState = init;
-      return init;
     }
-
-    inMemoryState = JSON.parse(raw);
-
-    // 저장된 베뉴 수가 최신(20개소)보다 적으면 최신 베뉴 및 공간/노하우 DB 병합
-    if (!inMemoryState.venues || inMemoryState.venues.length < INITIAL_VENUES.length) {
-      inMemoryState.venues = INITIAL_VENUES;
-      inMemoryState.venue_spaces = INITIAL_VENUE_SPACES;
-      inMemoryState.hall_observations = INITIAL_HALL_OBSERVATIONS;
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(inMemoryState));
-    }
-
-    return inMemoryState;
-  } catch (e) {
-    console.error('LocalStorage load failed, using fallback:', e);
-    return inMemoryState;
+    isStateLoaded = true;
   }
+  return inMemoryState;
 }
 
 function saveState(state: AppState) {
   inMemoryState = state;
-  if (typeof window !== 'undefined') {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    } catch (e) {
-      console.error('LocalStorage save failed:', e);
-    }
+
+  if (activeAdapter.providerType === 'local') {
+    localAdapter.saveState(state).catch((e) => {
+      console.error('LocalStorage save error:', e);
+    });
+  } else if (activeAdapter.providerType === 'google_sheets') {
+    // Source of Truth 원칙: Google Sheets Mode일 때는 localStorage에 몰래 저장하지 않고 Google Sheets에 전송!
+    sheetsAdapter.saveState(state).catch((err) => {
+      console.error('Google Sheets save failed:', err);
+      if (typeof window !== 'undefined') {
+        console.error('⚠️ [Google Sheets 저장 오류] 중앙 저장소에 변경사항이 저장되지 않았습니다.');
+      }
+    });
   }
 }
 
@@ -276,6 +262,126 @@ export const DataStore = {
 
   getState(): AppState {
     return loadState();
+  },
+
+  // ============================================================================
+  // Storage Provider 어댑터 관리 및 원격 동기화 / 마이그레이션
+  // ============================================================================
+
+  getStorageConfig(): StorageConfig {
+    return getStorageConfig();
+  },
+
+  getStorageProviderType(): StorageProviderType {
+    return activeAdapter.providerType;
+  },
+
+  getStorageAdapter(): IStorageAdapter {
+    return activeAdapter;
+  },
+
+  /**
+   * 저장소 프로바이더 전환 (local <-> google_sheets)
+   */
+  async switchStorageProvider(
+    provider: StorageProviderType,
+    googleSheetsUrl?: string
+  ): Promise<{ success: boolean; message: string }> {
+    if (provider === 'google_sheets') {
+      const url = (googleSheetsUrl || getStorageConfig().googleSheetsUrl || '').trim();
+      if (!url) {
+        return { success: false, message: 'Google Apps Script Web App URL을 입력해야 합니다.' };
+      }
+      sheetsAdapter.setWebAppUrl(url);
+      const testRes = await sheetsAdapter.testConnection();
+      if (!testRes.success) {
+        return { success: false, message: `연결 테스트 실패: ${testRes.message}` };
+      }
+
+      saveStorageConfig({
+        provider: 'google_sheets',
+        googleSheetsUrl: url,
+        lastConnectedAt: new Date().toISOString(),
+      });
+      activeAdapter = sheetsAdapter;
+
+      // Google Sheets로부터 최신 원격 데이터 로드하여 메모리 갱신
+      try {
+        const remoteState = await sheetsAdapter.loadState();
+        inMemoryState = remoteState;
+        isStateLoaded = true;
+      } catch (e) {
+        console.warn('Initial remote load warning:', e);
+      }
+
+      return { success: true, message: 'Google Sheets 저장소로 성공적으로 전환되었습니다.' };
+    } else {
+      saveStorageConfig({ provider: 'local' });
+      activeAdapter = localAdapter;
+      // 로컬 스토리지 데이터로 복귀
+      const localState = await localAdapter.loadState();
+      inMemoryState = localState;
+      isStateLoaded = true;
+      return { success: true, message: '로컬(Demo) 저장소 모드로 전환되었습니다.' };
+    }
+  },
+
+  /**
+   * 저장소 연결 테스트 (헬스체크)
+   */
+  async testStorageConnection(googleSheetsUrl?: string): Promise<StorageConnectionTestResult> {
+    if (googleSheetsUrl !== undefined) {
+      const testAdapter = new GoogleSheetsAdapter(googleSheetsUrl, WORKSPACE_ID);
+      return testAdapter.testConnection();
+    }
+    return activeAdapter.testConnection();
+  },
+
+  /**
+   * 로컬 스토리지 데이터를 Google Sheets로 이전 (Migration)
+   */
+  async migrateLocalToGoogleSheets(): Promise<{ success: boolean; count: number; message: string }> {
+    const config = getStorageConfig();
+    const url = config.googleSheetsUrl?.trim();
+    if (!url) {
+      return { success: false, count: 0, message: 'Google Sheets Web App URL이 설정되지 않았습니다.' };
+    }
+
+    // 1. 로컬 데이터 로드
+    const localData = await localAdapter.exportAllData();
+    if (!localData || !localData.jobs) {
+      return { success: false, count: 0, message: '이전할 유효한 로컬 데이터가 없습니다.' };
+    }
+
+    // 2. Google Sheets 어댑터 연결 확인
+    const migrationAdapter = new GoogleSheetsAdapter(url, WORKSPACE_ID);
+    const connTest = await migrationAdapter.testConnection();
+    if (!connTest.success) {
+      return { success: false, count: 0, message: `Google Sheets 연결 불가: ${connTest.message}` };
+    }
+
+    // 3. 일괄 이전 실행
+    const importRes = await migrationAdapter.importAllData(localData);
+    if (!importRes.success) {
+      return { success: false, count: 0, message: 'Google Sheets 데이터 이전 중 오류가 발생했습니다.' };
+    }
+
+    return {
+      success: true,
+      count: importRes.count,
+      message: `성공적으로 ${importRes.count}건의 로컬 데이터를 Google Sheets로 이전하였습니다.`,
+    };
+  },
+
+  /**
+   * 원격 저장소로부터 최신 상태 수동 동기화 (Google Sheets 모드 시)
+   */
+  async syncRemote(): Promise<void> {
+    if (activeAdapter.providerType === 'google_sheets') {
+      const remoteState = await activeAdapter.loadState();
+      inMemoryState = remoteState;
+      isStateLoaded = true;
+    }
   },
 
   // Photographers
