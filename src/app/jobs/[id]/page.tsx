@@ -1,0 +1,1232 @@
+'use client';
+
+import React, { useState, useEffect, use } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import {
+  ArrowLeft,
+  MapPin,
+  Users,
+  Copy,
+  Check,
+  AlertTriangle,
+  Plus,
+  ExternalLink,
+  ShieldCheck,
+  RotateCcw,
+  History,
+  CheckCircle2,
+  FileText,
+  DollarSign,
+  PackageCheck,
+  Building2,
+  Edit3,
+} from 'lucide-react';
+import { DataStore } from '@/lib/storage';
+import { Badge } from '@/components/ui/Badge';
+import { Modal } from '@/components/ui/Modal';
+import {
+  Job,
+  Venue,
+  VenueSpace,
+  Assignment,
+  Photographer,
+  JobPackVersion,
+  ChangeEvent,
+  Handover,
+  Settlement,
+  PaymentEntry,
+  Delivery,
+  HallObservation,
+  AssignmentStatus,
+  HandoverStatus,
+  HallObservationCategory,
+  DeliveryStatus,
+} from '@/types/database';
+
+export default function JobDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const resolvedParams = use(params);
+  const jobId = resolvedParams.id;
+  const router = useRouter();
+
+  const [job, setJob] = useState<Job | null>(null);
+  const [venue, setVenue] = useState<Venue | null>(null);
+  const [space, setSpace] = useState<VenueSpace | null>(null);
+  const [assignments, setAssignments] = useState<Assignment[]>([]);
+  const [photographers, setPhotographers] = useState<Photographer[]>([]);
+  const [jobPackVersions, setJobPackVersions] = useState<JobPackVersion[]>([]);
+  const [changeEvents, setChangeEvents] = useState<ChangeEvent[]>([]);
+  const [handovers, setHandovers] = useState<
+    (Handover & { assignment: Assignment; photographer: Photographer | undefined })[]
+  >([]);
+  const [settlements, setSettlements] = useState<
+    (Settlement & {
+      assignment: Assignment;
+      photographer: Photographer | undefined;
+      payments: PaymentEntry[];
+      total_due: number;
+      total_paid: number;
+      remaining: number;
+    })[]
+  >([]);
+  const [delivery, setDelivery] = useState<Delivery | undefined>(undefined);
+  const [hallObservations, setHallObservations] = useState<HallObservation[]>([]);
+
+  // 변경 알림
+  const [outdatedInfo, setOutdatedInfo] = useState<{ outdated: boolean; reason?: string }>({
+    outdated: false,
+  });
+
+  // 복사 피드백 토스트
+  const [copied, setCopied] = useState(false);
+
+  // 모달 상태들
+  const [isEditJobModalOpen, setIsEditJobModalOpen] = useState(false);
+  const [isAddAssignmentModalOpen, setIsAddAssignmentModalOpen] = useState(false);
+  const [isJobPackModalOpen, setIsJobPackModalOpen] = useState(false);
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [selectedSettlementId, setSelectedSettlementId] = useState<string | null>(null);
+  const [isObservationModalOpen, setIsObservationModalOpen] = useState(false);
+  const [isCompleteModalOpen, setIsCompleteModalOpen] = useState(false);
+
+  // 작업 폼 상태
+  const [editCeremonyTime, setEditCeremonyTime] = useState('');
+  const [editArrivalTime, setEditArrivalTime] = useState('');
+  const [editSpecialRequests, setEditSpecialRequests] = useState('');
+  const [newAsgnPhotographerId, setNewAsgnPhotographerId] = useState('');
+  const [newAsgnRole, setNewAsgnRole] = useState<'main' | 'sub' | 'etc'>('sub');
+  const [newAsgnFee, setNewAsgnFee] = useState('200000');
+  const [newAsgnAddFee, setNewAsgnAddFee] = useState('0');
+  const [newAsgnNotes, setNewAsgnNotes] = useState('');
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentMemo, setPaymentMemo] = useState('');
+
+  // 홀 관찰 등록 폼
+  const [newObsCategory, setNewObsCategory] = useState<HallObservationCategory>('must_caution');
+  const [newObsText, setNewObsText] = useState('');
+  const [newObsAction, setNewObsAction] = useState('');
+
+  useEffect(() => {
+    refreshData();
+  }, [jobId]);
+
+  const refreshData = () => {
+    const currentJob = DataStore.getJobById(jobId);
+    if (!currentJob) {
+      router.push('/jobs');
+      return;
+    }
+
+    setJob(currentJob);
+    setEditCeremonyTime(currentJob.ceremony_time);
+    setEditArrivalTime(currentJob.arrival_time);
+    setEditSpecialRequests(currentJob.special_requests || '');
+
+    const vList = DataStore.getVenues();
+    const sList = DataStore.getVenueSpaces();
+    setVenue(vList.find((v) => v.id === currentJob.venue_id) || null);
+    setSpace(sList.find((s) => s.id === currentJob.venue_space_id) || null);
+
+    setAssignments(DataStore.getAssignments(jobId));
+    setPhotographers(DataStore.getPhotographers());
+    setJobPackVersions(DataStore.getJobPackVersions(jobId));
+    setChangeEvents(DataStore.getChangeEvents(jobId));
+    setHandovers(DataStore.getHandovers(jobId));
+    setSettlements(DataStore.getSettlements(jobId));
+    setDelivery(DataStore.getDelivery(jobId));
+    setOutdatedInfo(DataStore.isJobPackOutdated(jobId));
+
+    if (currentJob.venue_space_id) {
+      setHallObservations(DataStore.getHallObservations(currentJob.venue_space_id));
+    }
+  };
+
+  if (!job) return null;
+
+  // 1. Job 정보 수정 처리 (예식 시간 변경 등)
+  const handleUpdateJobInfo = (e: React.FormEvent) => {
+    e.preventDefault();
+    DataStore.updateJob(job.id, {
+      ceremony_time: editCeremonyTime,
+      arrival_time: editArrivalTime,
+      special_requests: editSpecialRequests,
+    });
+    setIsEditJobModalOpen(false);
+    refreshData();
+  };
+
+  // 2. Job Pack 생성 처리
+  const handleGenerateJobPack = () => {
+    const content = DataStore.generateJobPackText(job.id);
+    DataStore.createJobPackVersion(job.id, content, '대표작가');
+    refreshData();
+  };
+
+  // 3. Job Pack 복사
+  const handleCopyJobPack = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2500);
+  };
+
+  // 4. 작가 배정 추가
+  const handleAddAssignment = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newAsgnPhotographerId) {
+      alert('작가를 선택해주세요.');
+      return;
+    }
+    DataStore.addAssignment({
+      job_id: job.id,
+      photographer_id: newAsgnPhotographerId,
+      role: newAsgnRole,
+      participation_start: job.arrival_time,
+      participation_end: job.estimated_end_time || '16:00',
+      assignment_status: 'proposed',
+      agreed_fee: newAsgnRole === 'main' ? null : Number(newAsgnFee),
+      additional_fee: Number(newAsgnAddFee),
+      notes: newAsgnNotes || null,
+    });
+    setIsAddAssignmentModalOpen(false);
+    setNewAsgnNotes('');
+    refreshData();
+  };
+
+  // 5. 작가 수락 상태 변경
+  const handleAssignmentStatusChange = (assignmentId: string, status: AssignmentStatus) => {
+    DataStore.updateAssignment(assignmentId, { assignment_status: status });
+    refreshData();
+  };
+
+  // 6. 원본 링크 및 상태 변경
+  const handleHandoverUpdate = (
+    handoverId: string,
+    updates: { external_url?: string; status?: HandoverStatus; notes?: string }
+  ) => {
+    DataStore.updateHandover(handoverId, updates);
+    refreshData();
+  };
+
+  // 7. 정산 실지급 등록
+  const handleAddPayment = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedSettlementId || !paymentAmount) return;
+    DataStore.addPaymentEntry(selectedSettlementId, Number(paymentAmount), paymentMemo);
+    setIsPaymentModalOpen(false);
+    setPaymentAmount('');
+    setPaymentMemo('');
+    refreshData();
+  };
+
+  // 8. 납품 상태 갱신
+  const handleDeliveryUpdate = (updates: Partial<Delivery>) => {
+    DataStore.updateDelivery(job.id, updates);
+    refreshData();
+  };
+
+  // 9. 홀 관찰 등록
+  const handleAddObservation = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!job.venue_space_id || !newObsText.trim()) return;
+    DataStore.addHallObservation({
+      venue_space_id: job.venue_space_id,
+      related_job_id: job.id,
+      author: '민규 (대표)',
+      observed_at: new Date().toISOString().split('T')[0],
+      source_type: 'direct',
+      category: newObsCategory,
+      observation_text: newObsText.trim(),
+      action_note: newObsAction.trim() || null,
+    });
+    setIsObservationModalOpen(false);
+    setNewObsText('');
+    setNewObsAction('');
+    refreshData();
+  };
+
+  // 10. Job 완료 처리
+  const completionEligibility = DataStore.checkJobCompletionEligibility(job.id);
+  const handleCompleteJob = () => {
+    const res = DataStore.completeJob(job.id);
+    if (res.success) {
+      setIsCompleteModalOpen(false);
+      refreshData();
+    } else {
+      alert(res.message);
+    }
+  };
+
+  const currentJobPackText =
+    jobPackVersions.length > 0 ? jobPackVersions[0].content : DataStore.generateJobPackText(job.id);
+
+  return (
+    <div className="space-y-5 pb-12">
+      {/* 1. 상단 내비 & 상태 헤더 */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Link
+            href="/jobs"
+            className="p-1.5 -ml-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-200/60 transition"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </Link>
+          <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">
+            {job.shoot_date}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <Badge
+            variant={
+              job.status === 'completed'
+                ? 'success'
+                : job.status === 'cancelled'
+                ? 'danger'
+                : 'primary'
+            }
+          >
+            {job.status === 'completed'
+              ? '완료됨'
+              : job.status === 'cancelled'
+              ? '취소'
+              : '진행중'}
+          </Badge>
+          {job.status !== 'completed' && (
+            <button
+              onClick={() => setIsCompleteModalOpen(true)}
+              className="text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1 rounded-lg transition shadow-sm"
+            >
+              촬영 종료 처리
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* 2. 핵심 정보 카드 */}
+      <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm space-y-3">
+        <div className="flex items-start justify-between">
+          <div>
+            <h1 className="text-xl font-bold text-slate-900 tracking-tight">{job.title}</h1>
+            <div className="flex items-center gap-1.5 text-xs text-slate-600 mt-1">
+              <MapPin className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+              <span className="font-semibold text-slate-800">
+                {venue?.name || '베뉴 미정'} {space ? `· ${space.name} (${space.floor || '층'})` : ''}
+              </span>
+            </div>
+          </div>
+          <button
+            onClick={() => setIsEditJobModalOpen(true)}
+            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition"
+            title="정보 수정"
+          >
+            <Edit3 className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="grid grid-cols-3 gap-2 bg-slate-50 p-2.5 rounded-lg text-center border border-slate-100">
+          <div>
+            <span className="text-[10px] text-slate-500 block">도착 시각</span>
+            <strong className="text-sm text-slate-900 font-bold">{job.arrival_time}</strong>
+          </div>
+          <div className="border-x border-slate-200">
+            <span className="text-[10px] text-indigo-600 font-bold block">예식 시작</span>
+            <strong className="text-sm text-indigo-700 font-extrabold">{job.ceremony_time}</strong>
+          </div>
+          <div>
+            <span className="text-[10px] text-slate-500 block">예상 종료</span>
+            <strong className="text-sm text-slate-900 font-bold">
+              {job.estimated_end_time || '16:00'}
+            </strong>
+          </div>
+        </div>
+
+        {/* 촬영 범위 태그 */}
+        <div className="flex flex-wrap gap-1.5 pt-1">
+          {job.shoot_scope?.map((scope) => (
+            <span
+              key={scope}
+              className="text-[11px] font-medium bg-slate-100 text-slate-700 px-2 py-0.5 rounded"
+            >
+              {scope}
+            </span>
+          ))}
+        </div>
+
+        {/* 특별 요청 & 놓치면 안 되는 사항 */}
+        {(job.special_requests || job.must_shoot_notes) && (
+          <div className="bg-amber-50/70 border border-amber-200/80 rounded-lg p-3 text-xs space-y-1">
+            {job.special_requests && (
+              <p className="text-amber-950 font-medium">
+                <strong className="text-amber-800">특별 요청:</strong> {job.special_requests}
+              </p>
+            )}
+            {job.must_shoot_notes && (
+              <p className="text-amber-950 font-medium">
+                <strong className="text-rose-700">필수 포착:</strong> {job.must_shoot_notes}
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* 3. [중요] Job Pack 생성 이후 정보 변경 알림 배너 */}
+      {outdatedInfo.outdated && (
+        <div className="bg-rose-50 border border-rose-300 rounded-xl p-3.5 flex items-start gap-3 shadow-sm animate-pulse">
+          <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <h4 className="text-xs font-bold text-rose-900">
+              촬영 안내문(Job Pack)이 생성된 이후 중요 정보가 변경되었습니다!
+            </h4>
+            <p className="text-xs text-rose-700 mt-0.5">{outdatedInfo.reason}</p>
+            <button
+              onClick={handleGenerateJobPack}
+              className="mt-2 text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white px-3 py-1.5 rounded-lg transition"
+            >
+              새 촬영 안내문(v{jobPackVersions.length + 1}) 재생성하기
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 4. 작가 배정 (Assignment) 섹션 */}
+      <section className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm space-y-3">
+        <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+          <h2 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
+            <Users className="w-4 h-4 text-indigo-600" />
+            작가 배정 ({assignments.length}명)
+          </h2>
+          <button
+            onClick={() => setIsAddAssignmentModalOpen(true)}
+            className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 flex items-center gap-1"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            작가 추가
+          </button>
+        </div>
+
+        <div className="space-y-2.5">
+          {assignments.map((asgn) => {
+            const p = photographers.find((item) => item.id === asgn.photographer_id);
+            const isRep = p?.name.includes('대표') || asgn.role === 'main';
+
+            return (
+              <div
+                key={asgn.id}
+                className="bg-slate-50 border border-slate-200/80 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2"
+              >
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-bold text-slate-900">{p?.name || '작가'}</span>
+                    <Badge variant={asgn.role === 'main' ? 'primary' : 'secondary'}>
+                      {asgn.role === 'main' ? '메인' : '서브'}
+                    </Badge>
+                    <span className="text-xs text-slate-500">{p?.phone}</span>
+                  </div>
+                  <p className="text-xs text-slate-600 mt-1">
+                    {asgn.notes || (asgn.role === 'main' ? '대표 메인 촬영' : '서브 스냅 담당')}
+                  </p>
+                  {!isRep && (
+                    <div className="text-xs font-semibold text-indigo-900 mt-1">
+                      외주비: {(asgn.agreed_fee || 0).toLocaleString()}원
+                      {asgn.additional_fee ? ` + 추가비 ${asgn.additional_fee.toLocaleString()}원` : ''}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2 self-end sm:self-center">
+                  <select
+                    value={asgn.assignment_status}
+                    onChange={(e) =>
+                      handleAssignmentStatusChange(asgn.id, e.target.value as AssignmentStatus)
+                    }
+                    className={`text-xs font-bold px-2.5 py-1 rounded-lg border focus:outline-none transition ${
+                      asgn.assignment_status === 'accepted'
+                        ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                        : asgn.assignment_status === 'proposed'
+                        ? 'bg-amber-50 text-amber-800 border-amber-300'
+                        : 'bg-slate-100 text-slate-700 border-slate-300'
+                    }`}
+                  >
+                    <option value="proposed">수락 대기 (proposed)</option>
+                    <option value="accepted">수락 완료 (accepted)</option>
+                    <option value="declined">거절 (declined)</option>
+                    <option value="replaced">교체 (replaced)</option>
+                    <option value="cancelled">취소 (cancelled)</option>
+                  </select>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* 5. 촬영 안내 (Job Pack) 섹션 — Phase 1 핵심 */}
+      <section className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm space-y-3">
+        <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+          <div className="flex items-center gap-1.5">
+            <FileText className="w-4 h-4 text-indigo-600" />
+            <h2 className="text-sm font-bold text-slate-900">촬영 안내 (Job Pack)</h2>
+            {jobPackVersions.length > 0 && (
+              <span className="text-[11px] font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded">
+                v{jobPackVersions[0].version_number}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            {jobPackVersions.length > 0 && (
+              <button
+                onClick={() => setIsJobPackModalOpen(true)}
+                className="text-xs text-slate-500 hover:text-slate-800 flex items-center gap-1"
+              >
+                <History className="w-3.5 h-3.5" />
+                이력 ({jobPackVersions.length})
+              </button>
+            )}
+            <button
+              onClick={handleGenerateJobPack}
+              className="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 bg-indigo-50 px-2.5 py-1 rounded-lg"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              {jobPackVersions.length === 0 ? '촬영 안내 생성' : '새 버전 생성'}
+            </button>
+          </div>
+        </div>
+
+        {jobPackVersions.length === 0 ? (
+          <div className="text-center py-6 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+            <p className="text-xs text-slate-500 mb-2">
+              아직 외주작가에게 전달할 촬영 안내문이 생성되지 않았습니다.
+            </p>
+            <button
+              onClick={handleGenerateJobPack}
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg shadow-sm transition"
+            >
+              촬영 안내 생성
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="relative bg-slate-900 text-slate-100 rounded-xl p-3.5 text-xs font-mono whitespace-pre-wrap leading-relaxed max-h-60 overflow-y-auto border border-slate-800">
+              {currentJobPackText}
+            </div>
+
+            <button
+              onClick={() => handleCopyJobPack(currentJobPackText)}
+              className={`w-full py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition shadow-sm ${
+                copied
+                  ? 'bg-emerald-600 text-white'
+                  : 'bg-indigo-600 hover:bg-indigo-700 text-white active:scale-[0.99]'
+              }`}
+            >
+              {copied ? (
+                <>
+                  <Check className="w-4 h-4 stroke-[3]" />
+                  카카오톡 전달용 복사 완료!
+                </>
+              ) : (
+                <>
+                  <Copy className="w-4 h-4" />
+                  카카오톡 전송용 안내문 복사
+                </>
+              )}
+            </button>
+          </div>
+        )}
+      </section>
+
+      {/* 6. 원본 인수 및 검수 (Handover) 섹션 */}
+      <section className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm space-y-3">
+        <h2 className="text-sm font-bold text-slate-900 flex items-center gap-1.5 border-b border-slate-100 pb-2">
+          <ShieldCheck className="w-4 h-4 text-indigo-600" />
+          외주 원본 인수 및 검수
+        </h2>
+
+        {handovers.length === 0 ? (
+          <p className="text-xs text-slate-500 py-2">인수 대상 외주작가가 없습니다.</p>
+        ) : (
+          <div className="space-y-3">
+            {handovers.map((h) => (
+              <div
+                key={h.id}
+                className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2.5"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-slate-900">
+                      {h.photographer?.name} 작가
+                    </span>
+                    <Badge
+                      variant={
+                        h.status === 'verified'
+                          ? 'success'
+                          : h.status === 'revision_requested'
+                          ? 'danger'
+                          : h.status === 'submitted'
+                          ? 'warning'
+                          : 'neutral'
+                      }
+                    >
+                      {h.status === 'pending'
+                        ? '미전달 (pending)'
+                        : h.status === 'submitted'
+                        ? '제출됨 / 검수필요'
+                        : h.status === 'revision_requested'
+                        ? '보완 요청됨'
+                        : '검수 완료 (verified)'}
+                    </Badge>
+                  </div>
+                  <span className="text-[11px] text-slate-500">
+                    기한: {h.due_at ? h.due_at.split('T')[0] : '미지정'}
+                  </span>
+                </div>
+
+                {/* 원본 링크 입력/표시 */}
+                <div className="flex items-center gap-2">
+                  <input
+                    type="url"
+                    placeholder="드라이브 원본 링크 (Google Drive, Dropbox 등)"
+                    defaultValue={h.external_url || ''}
+                    onBlur={(e) => {
+                      if (e.target.value !== (h.external_url || '')) {
+                        handleHandoverUpdate(h.id, {
+                          external_url: e.target.value,
+                          status: e.target.value ? 'submitted' : 'pending',
+                        });
+                      }
+                    }}
+                    className="flex-1 text-xs px-2.5 py-1.5 border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  />
+                  {h.external_url && (
+                    <a
+                      href={h.external_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="p-1.5 bg-slate-200 hover:bg-slate-300 rounded-lg text-slate-700 transition"
+                      title="링크 열기"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </a>
+                  )}
+                </div>
+
+                {/* 대표 검수 액션 버튼 */}
+                <div className="flex items-center justify-between pt-1 text-xs">
+                  <div className="text-[11px] text-slate-500">
+                    {h.representative_checked_at
+                      ? `검수 확인일: ${new Date(h.representative_checked_at).toLocaleDateString()}`
+                      : '대표 미확인'}
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => {
+                        const note = prompt('보완 요청 사유를 입력하세요 (예: 2부 원본 일부 누락):');
+                        if (note !== null) {
+                          handleHandoverUpdate(h.id, {
+                            status: 'revision_requested',
+                            notes: note,
+                          });
+                        }
+                      }}
+                      className="px-2.5 py-1 bg-rose-50 text-rose-700 hover:bg-rose-100 font-medium rounded-md border border-rose-200 transition"
+                    >
+                      보완 요청
+                    </button>
+                    <button
+                      onClick={() => handleHandoverUpdate(h.id, { status: 'verified' })}
+                      className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-md transition shadow-sm"
+                    >
+                      검수 완료 (Verified)
+                    </button>
+                  </div>
+                </div>
+                {h.notes && (
+                  <p className="text-[11px] text-rose-700 bg-rose-50/50 p-1.5 rounded border border-rose-100">
+                    메모: {h.notes}
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* 7. 외주 정산 (Settlement) 섹션 */}
+      <section className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm space-y-3">
+        <h2 className="text-sm font-bold text-slate-900 flex items-center gap-1.5 border-b border-slate-100 pb-2">
+          <DollarSign className="w-4 h-4 text-indigo-600" />
+          외주비 정산 관리
+        </h2>
+
+        {settlements.length === 0 ? (
+          <p className="text-xs text-slate-500 py-2">정산 대상 외주작가가 없습니다.</p>
+        ) : (
+          <div className="space-y-3">
+            {settlements.map((stl) => (
+              <div
+                key={stl.id}
+                className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2.5"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-slate-900">
+                      {stl.photographer?.name} 작가
+                    </span>
+                    <Badge
+                      variant={
+                        stl.settlement_status === 'paid'
+                          ? 'success'
+                          : stl.settlement_status === 'partially_paid'
+                          ? 'warning'
+                          : 'neutral'
+                      }
+                    >
+                      {stl.settlement_status === 'paid'
+                        ? '지급 완료 (paid)'
+                        : stl.settlement_status === 'partially_paid'
+                        ? '부분 지급 (partially_paid)'
+                        : stl.settlement_status === 'waived'
+                        ? '면제'
+                        : '미지급 (unpaid)'}
+                    </Badge>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setSelectedSettlementId(stl.id);
+                      setIsPaymentModalOpen(true);
+                    }}
+                    className="text-xs font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 px-2 py-1 rounded-md"
+                  >
+                    + 지급 내역 등록
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2 bg-white p-2 rounded-lg border border-slate-200 text-center text-xs">
+                  <div>
+                    <span className="text-[10px] text-slate-500 block">총 약정/정산액</span>
+                    <strong className="text-slate-800 font-bold">
+                      {stl.total_due.toLocaleString()}원
+                    </strong>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-emerald-600 block">기지급액</span>
+                    <strong className="text-emerald-700 font-bold">
+                      {stl.total_paid.toLocaleString()}원
+                    </strong>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-rose-600 block">남은 잔액</span>
+                    <strong className="text-rose-700 font-bold">
+                      {stl.remaining.toLocaleString()}원
+                    </strong>
+                  </div>
+                </div>
+
+                {/* 분할 지급 내역 이력 */}
+                {stl.payments.length > 0 && (
+                  <div className="space-y-1 pt-1 border-t border-slate-200/60">
+                    <span className="text-[10px] font-bold text-slate-500 block">지급 내역 이력:</span>
+                    {stl.payments.map((p) => (
+                      <div
+                        key={p.id}
+                        className="flex items-center justify-between text-[11px] text-slate-600 bg-white/70 px-2 py-1 rounded border border-slate-100"
+                      >
+                        <span>
+                          {new Date(p.paid_at).toLocaleDateString()} · {p.memo || '지급'}
+                        </span>
+                        <strong className="text-slate-900 font-semibold">
+                          +{p.payment_amount.toLocaleString()}원
+                        </strong>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* 8. 최종 납품 (Delivery) 섹션 */}
+      <section className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm space-y-3">
+        <h2 className="text-sm font-bold text-slate-900 flex items-center gap-1.5 border-b border-slate-100 pb-2">
+          <PackageCheck className="w-4 h-4 text-indigo-600" />
+          고객 최종 납품 추적
+        </h2>
+
+        <div className="space-y-2.5">
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-slate-600">납품 기한:</span>
+            <input
+              type="date"
+              defaultValue={delivery?.delivery_due_at || ''}
+              onBlur={(e) => handleDeliveryUpdate({ delivery_due_at: e.target.value })}
+              className="px-2 py-1 border border-slate-300 rounded text-xs"
+            />
+          </div>
+
+          <div className="flex items-center gap-2">
+            <input
+              type="url"
+              placeholder="완성본 전달 드라이브 링크 (웹하드 등)"
+              defaultValue={delivery?.external_work_url || ''}
+              onBlur={(e) => handleDeliveryUpdate({ external_work_url: e.target.value })}
+              className="flex-1 text-xs px-2.5 py-1.5 border border-slate-300 rounded-lg bg-white focus:outline-none"
+            />
+            <select
+              value={delivery?.delivery_status || 'pending'}
+              onChange={(e) =>
+                handleDeliveryUpdate({
+                  delivery_status: e.target.value as DeliveryStatus,
+                })
+              }
+              className="text-xs font-bold px-2 py-1.5 rounded-lg border bg-white focus:outline-none"
+            >
+              <option value="pending">진행중 (pending)</option>
+              <option value="delivered">납품완료 (delivered)</option>
+              <option value="not_applicable">해당없음</option>
+            </select>
+          </div>
+        </div>
+      </section>
+
+      {/* 9. 웨딩홀 관찰 기록 (Hall Observations) — 현장 지식 축적 */}
+      <section className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm space-y-3">
+        <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+          <div className="flex items-center gap-1.5">
+            <Building2 className="w-4 h-4 text-indigo-600" />
+            <h2 className="text-sm font-bold text-slate-900">
+              웨딩홀 현장 팁 & 관찰 ({space?.name || '홀'})
+            </h2>
+          </div>
+          <button
+            onClick={() => setIsObservationModalOpen(true)}
+            className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 flex items-center gap-1"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            관찰 기록
+          </button>
+        </div>
+
+        {hallObservations.length === 0 ? (
+          <p className="text-xs text-slate-500 py-2">
+            아직 이 홀에 축적된 관찰 기록이 없습니다. 촬영 후 새로 알게 된 점을 기록해보세요.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {hallObservations.map((obs) => {
+              const categoryConfig = {
+                must_caution: {
+                  label: '반드시 주의할 것',
+                  style: 'bg-rose-50 text-rose-800 border-rose-200',
+                },
+                team_routine: {
+                  label: '우리 팀 루틴/구도',
+                  style: 'bg-indigo-50 text-indigo-800 border-indigo-200',
+                },
+                next_check: {
+                  label: '다음에 확인할 것',
+                  style: 'bg-amber-50 text-amber-800 border-amber-200',
+                },
+              }[obs.category];
+
+              return (
+                <div
+                  key={obs.id}
+                  className="bg-slate-50 border border-slate-200/80 rounded-xl p-3 space-y-1.5"
+                >
+                  <div className="flex items-center justify-between">
+                    <span
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded border ${categoryConfig.style}`}
+                    >
+                      {categoryConfig.label}
+                    </span>
+                    <span className="text-[10px] text-slate-400">
+                      {obs.observed_at} · {obs.author}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-800 leading-relaxed">{obs.observation_text}</p>
+                  {obs.action_note && (
+                    <p className="text-[11px] text-slate-600 font-medium bg-white/80 p-1.5 rounded border border-slate-100">
+                      💡 액션 노트: {obs.action_note}
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      {/* 10. 변경 이력 (Change Events) */}
+      {changeEvents.length > 0 && (
+        <section className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm space-y-2.5">
+          <h2 className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+            <History className="w-3.5 h-3.5 text-slate-500" />
+            중요 정보 변경 기록 ({changeEvents.length}건)
+          </h2>
+          <div className="space-y-1 text-[11px] text-slate-600 divide-y divide-slate-100">
+            {changeEvents.slice(0, 5).map((chg) => (
+              <div key={chg.id} className="pt-1.5 first:pt-0 flex items-center justify-between">
+                <span>{chg.description}</span>
+                <span className="text-[10px] text-slate-400 shrink-0 ml-2">
+                  {new Date(chg.created_at).toLocaleTimeString([], {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
+                </span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* ----------------- 모달들 ----------------- */}
+
+      {/* 1. 기본 정보 수정 모달 */}
+      <Modal
+        isOpen={isEditJobModalOpen}
+        onClose={() => setIsEditJobModalOpen(false)}
+        title="촬영 기본 정보 수정"
+      >
+        <form onSubmit={handleUpdateJobInfo} className="space-y-3.5">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                예식 시작 시각
+              </label>
+              <input
+                type="time"
+                value={editCeremonyTime}
+                onChange={(e) => setEditCeremonyTime(e.target.value)}
+                className="w-full text-sm px-3 py-2 border rounded-lg"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                작가 도착 시각
+              </label>
+              <input
+                type="time"
+                value={editArrivalTime}
+                onChange={(e) => setEditArrivalTime(e.target.value)}
+                className="w-full text-sm px-3 py-2 border rounded-lg"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              특별 요청사항
+            </label>
+            <textarea
+              rows={2}
+              value={editSpecialRequests}
+              onChange={(e) => setEditSpecialRequests(e.target.value)}
+              className="w-full text-sm px-3 py-2 border rounded-lg"
+            />
+          </div>
+          <p className="text-[11px] text-amber-700 bg-amber-50 p-2 rounded">
+            ⚠️ 일시나 핵심 정보 변경 시 기존 Job Pack 이후 변경 알림이 활성화됩니다.
+          </p>
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              type="button"
+              onClick={() => setIsEditJobModalOpen(false)}
+              className="px-4 py-2 text-xs text-slate-600 bg-slate-100 rounded-lg"
+            >
+              취소
+            </button>
+            <button
+              type="submit"
+              className="px-4 py-2 text-xs font-bold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700"
+            >
+              수정 저장
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* 2. 작가 추가 모달 */}
+      <Modal
+        isOpen={isAddAssignmentModalOpen}
+        onClose={() => setIsAddAssignmentModalOpen(false)}
+        title="촬영 작가 추가 배정"
+      >
+        <form onSubmit={handleAddAssignment} className="space-y-3.5">
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              작가 선택 <span className="text-rose-500">*</span>
+            </label>
+            <select
+              required
+              value={newAsgnPhotographerId}
+              onChange={(e) => setNewAsgnPhotographerId(e.target.value)}
+              className="w-full text-sm px-3 py-2 border rounded-lg bg-white"
+            >
+              <option value="">작가를 선택하세요</option>
+              {photographers.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name} ({p.phone})
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">역할</label>
+              <select
+                value={newAsgnRole}
+                onChange={(e) => setNewAsgnRole(e.target.value as 'main' | 'sub' | 'etc')}
+                className="w-full text-sm px-3 py-2 border rounded-lg bg-white"
+              >
+                <option value="sub">서브작가</option>
+                <option value="main">메인작가</option>
+                <option value="etc">기타</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">약정 외주비</label>
+              <input
+                type="number"
+                step="10000"
+                value={newAsgnFee}
+                onChange={(e) => setNewAsgnFee(e.target.value)}
+                className="w-full text-sm px-3 py-2 border rounded-lg"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              추가비 / 교통비
+            </label>
+            <input
+              type="number"
+              step="5000"
+              value={newAsgnAddFee}
+              onChange={(e) => setNewAsgnAddFee(e.target.value)}
+              className="w-full text-sm px-3 py-2 border rounded-lg"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">담당 업무 메모</label>
+            <input
+              type="text"
+              placeholder="예: 서브스냅 및 부모님 표정 집중"
+              value={newAsgnNotes}
+              onChange={(e) => setNewAsgnNotes(e.target.value)}
+              className="w-full text-sm px-3 py-2 border rounded-lg"
+            />
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              type="button"
+              onClick={() => setIsAddAssignmentModalOpen(false)}
+              className="px-4 py-2 text-xs text-slate-600 bg-slate-100 rounded-lg"
+            >
+              취소
+            </button>
+            <button
+              type="submit"
+              className="px-4 py-2 text-xs font-bold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700"
+            >
+              배정 저장
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* 3. Job Pack 버전 이력 모달 */}
+      <Modal
+        isOpen={isJobPackModalOpen}
+        onClose={() => setIsJobPackModalOpen(false)}
+        title="촬영 안내문 (Job Pack) 버전 이력"
+      >
+        <div className="space-y-4">
+          {jobPackVersions.map((v) => (
+            <div key={v.id} className="border border-slate-200 rounded-xl p-3 bg-slate-50 space-y-2">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-bold text-indigo-700 bg-indigo-100 px-2 py-0.5 rounded">
+                  버전 {v.version_number}
+                </span>
+                <span className="text-slate-400">
+                  {new Date(v.created_at).toLocaleString()} · {v.created_by}
+                </span>
+              </div>
+              <pre className="text-xs bg-slate-900 text-slate-100 p-2.5 rounded-lg whitespace-pre-wrap font-mono max-h-40 overflow-y-auto">
+                {v.content}
+              </pre>
+              <button
+                onClick={() => handleCopyJobPack(v.content)}
+                className="w-full py-1.5 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 text-xs font-semibold rounded-lg transition"
+              >
+                이 버전 복사하기
+              </button>
+            </div>
+          ))}
+        </div>
+      </Modal>
+
+      {/* 4. 외주비 지급 내역 등록 모달 */}
+      <Modal
+        isOpen={isPaymentModalOpen}
+        onClose={() => setIsPaymentModalOpen(false)}
+        title="외주비 지급 내역 등록"
+      >
+        <form onSubmit={handleAddPayment} className="space-y-3.5">
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              지급 금액 (원) <span className="text-rose-500">*</span>
+            </label>
+            <input
+              type="number"
+              required
+              step="10000"
+              placeholder="예: 100000"
+              value={paymentAmount}
+              onChange={(e) => setPaymentAmount(e.target.value)}
+              className="w-full text-sm px-3 py-2 border rounded-lg"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">지급 메모</label>
+            <input
+              type="text"
+              placeholder="예: 1차 계약금 / 잔금 입금 등"
+              value={paymentMemo}
+              onChange={(e) => setPaymentMemo(e.target.value)}
+              className="w-full text-sm px-3 py-2 border rounded-lg"
+            />
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              type="button"
+              onClick={() => setIsPaymentModalOpen(false)}
+              className="px-4 py-2 text-xs text-slate-600 bg-slate-100 rounded-lg"
+            >
+              취소
+            </button>
+            <button
+              type="submit"
+              className="px-4 py-2 text-xs font-bold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700"
+            >
+              지급 기록 저장
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* 5. 웨딩홀 관찰 기록 등록 모달 */}
+      <Modal
+        isOpen={isObservationModalOpen}
+        onClose={() => setIsObservationModalOpen(false)}
+        title={`웨딩홀 관찰 기록 추가 (${space?.name || '홀'})`}
+      >
+        <form onSubmit={handleAddObservation} className="space-y-3.5">
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">관점 분류</label>
+            <select
+              value={newObsCategory}
+              onChange={(e) => setNewObsCategory(e.target.value as HallObservationCategory)}
+              className="w-full text-sm px-3 py-2 border rounded-lg bg-white"
+            >
+              <option value="must_caution">반드시 주의할 것 (must_caution)</option>
+              <option value="team_routine">우리 팀이 반복 사용하는 방법 (team_routine)</option>
+              <option value="next_check">다음번에 확인해야 할 것 (next_check)</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              관찰 내용 <span className="text-rose-500">*</span>
+            </label>
+            <textarea
+              required
+              rows={3}
+              placeholder="예: 신부대기실 우측 공간이 좁아짐. 다음 촬영 때 가구 배치 확인."
+              value={newObsText}
+              onChange={(e) => setNewObsText(e.target.value)}
+              className="w-full text-sm px-3 py-2 border rounded-lg"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              팀 조치 권고사항 (Action Note)
+            </label>
+            <input
+              type="text"
+              placeholder="예: 서브작가 35mm 단렌즈 활용 권장"
+              value={newObsAction}
+              onChange={(e) => setNewObsAction(e.target.value)}
+              className="w-full text-sm px-3 py-2 border rounded-lg"
+            />
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              type="button"
+              onClick={() => setIsObservationModalOpen(false)}
+              className="px-4 py-2 text-xs text-slate-600 bg-slate-100 rounded-lg"
+            >
+              취소
+            </button>
+            <button
+              type="submit"
+              className="px-4 py-2 text-xs font-bold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700"
+            >
+              관찰 저장
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* 6. 본식 완료 요건 체크 모달 */}
+      <Modal
+        isOpen={isCompleteModalOpen}
+        onClose={() => setIsCompleteModalOpen(false)}
+        title="본식 촬영 최종 완료 (Completed) 확인"
+      >
+        <div className="space-y-4">
+          <p className="text-xs text-slate-600">
+            앱에서는 단순 체크가 아니라 아래 4가지 필수 완료 조건을 만족해야 최종 완료 처리가
+            가능합니다:
+          </p>
+
+          <div className="space-y-2 bg-slate-50 p-3 rounded-xl border border-slate-200">
+            {completionEligibility.reasons.map((r, i) => (
+              <div key={i} className="flex items-center gap-2 text-xs">
+                {r.fulfilled ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                ) : (
+                  <div className="w-4 h-4 rounded-full border border-slate-300 bg-white shrink-0" />
+                )}
+                <span
+                  className={r.fulfilled ? 'text-slate-800 font-semibold' : 'text-slate-400'}
+                >
+                  {r.label}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              type="button"
+              onClick={() => setIsCompleteModalOpen(false)}
+              className="px-4 py-2 text-xs text-slate-600 bg-slate-100 rounded-lg"
+            >
+              닫기
+            </button>
+            <button
+              type="button"
+              disabled={!completionEligibility.canComplete}
+              onClick={handleCompleteJob}
+              className={`px-4 py-2 text-xs font-bold rounded-lg transition ${
+                completionEligibility.canComplete
+                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm'
+                  : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+              }`}
+            >
+              {completionEligibility.canComplete ? '최종 완료 확정' : '조건 미충족'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+    </div>
+  );
+}
