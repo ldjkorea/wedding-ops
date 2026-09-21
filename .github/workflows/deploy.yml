@@ -39,6 +39,9 @@ jobs:
       - name: Run photographer lifecycle tests
         run: npm run test:photographer
 
+      - name: Run phase 3 calendar & ops tests
+        run: npm run test:phase3
+
       - name: Build Next.js Static Export
         run: npm run build
         env:

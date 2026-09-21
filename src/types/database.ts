@@ -82,6 +82,7 @@ export type Job = {
   special_requests?: string | null;
   must_shoot_notes?: string | null;
   deliverable_notes?: string | null;
+  required_photographer_count?: number | null; // Phase 3: 필요 작가 수 (기본 2)
   status: JobStatus;
   created_at: string;
   updated_at: string;
@@ -209,3 +210,54 @@ export type HallObservation = {
   action_note?: string | null;
   created_at: string;
 };
+
+// ==============================================================================
+// Phase 3 (Calendar + Operations Dashboard) 파생 상태 및 알림 타입
+// ==============================================================================
+
+export type JobDisplayStatus =
+  | '배정 필요'
+  | '수락 대기'
+  | '촬영 예정'
+  | '촬영 완료'
+  | '원본 대기'
+  | '검수 필요'
+  | '완료'
+  | '취소';
+
+export type ConflictWarning = {
+  photographerId: string;
+  photographerName: string;
+  job1Id: string;
+  job1Title: string;
+  time1: string;
+  job2Id: string;
+  job2Title: string;
+  time2: string;
+  shootDate: string;
+};
+
+export type DashboardActionCategory =
+  | 'urgent'            // 1순위: 오늘/내일 긴급
+  | 'conflict'          // 2순위: 일정 충돌
+  | 'unassigned'        // 3순위: 작가 미배정
+  | 'acceptance'        // 4순위: 작가 수락/변경 미확인
+  | 'handover_overdue'  // 5순위: 원본 지연
+  | 'handover_review'   // 6순위: 원본 검수
+  | 'delivery_due'      // 7순위: 납품 기한 임박/지연
+  | 'settlement_unpaid';// 8순위: 외주비 미정산
+
+export type DashboardActionItem = {
+  id: string;
+  priority: number; // 1 ~ 8
+  category: DashboardActionCategory;
+  categoryLabel: string;
+  title: string;
+  description: string;
+  jobId?: string;
+  linkUrl: string;
+  badgeText: string;
+  badgeVariant: 'rose' | 'amber' | 'indigo' | 'emerald' | 'slate';
+  dateInfo?: string;
+};
+

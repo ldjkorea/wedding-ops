@@ -1,25 +1,28 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { useState, useEffect, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { ArrowLeft, Plus, Check } from 'lucide-react';
 import Link from 'next/link';
 import { DataStore } from '@/lib/storage';
 import { Venue, VenueSpace } from '@/types/database';
 import { Modal } from '@/components/ui/Modal';
 
-export default function NewJobPage() {
+function NewJobForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const dateParam = searchParams.get('date');
 
   const [venues, setVenues] = useState<Venue[]>([]);
   const [spaces, setSpaces] = useState<VenueSpace[]>([]);
 
   // 폼 입력 상태
   const [title, setTitle] = useState('');
-  const [shootDate, setShootDate] = useState(new Date().toISOString().split('T')[0]);
+  const [shootDate, setShootDate] = useState(dateParam || new Date().toISOString().split('T')[0]);
   const [arrivalTime, setArrivalTime] = useState('12:30');
   const [ceremonyTime, setCeremonyTime] = useState('14:00');
   const [estimatedEndTime, setEstimatedEndTime] = useState('16:00');
+  const [requiredPhotographerCount, setRequiredPhotographerCount] = useState<number>(2);
   const [venueId, setVenueId] = useState('');
   const [venueSpaceId, setVenueSpaceId] = useState('');
   const [clientName, setClientName] = useState('');
@@ -127,6 +130,7 @@ export default function NewJobPage() {
       special_requests: specialRequests.trim() || null,
       must_shoot_notes: mustShootNotes.trim() || null,
       deliverable_notes: deliverableNotes.trim() || null,
+      required_photographer_count: requiredPhotographerCount,
       status: 'scheduled',
     });
 
@@ -250,6 +254,22 @@ export default function NewJobPage() {
                 className="w-full text-sm px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
             </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              필요 작가 인원 (스냅 팀 구성) <span className="text-rose-500">*</span>
+            </label>
+            <select
+              value={requiredPhotographerCount}
+              onChange={(e) => setRequiredPhotographerCount(Number(e.target.value))}
+              className="w-full text-sm px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+            >
+              <option value={1}>1인 촬영 (단독 메인)</option>
+              <option value={2}>2인 촬영 (메인 + 서브 1인 / 기본값)</option>
+              <option value={3}>3인 촬영 (메인 + 서브 2인 또는 원판)</option>
+              <option value={4}>4인 이상</option>
+            </select>
           </div>
         </div>
 
@@ -498,3 +518,18 @@ export default function NewJobPage() {
     </div>
   );
 }
+
+export default function NewJobPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="p-8 text-center text-sm text-slate-500">
+          신규 촬영 등록 양식을 불러오는 중입니다...
+        </div>
+      }
+    >
+      <NewJobForm />
+    </Suspense>
+  );
+}
+

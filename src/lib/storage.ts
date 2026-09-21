@@ -12,6 +12,9 @@ import {
   PaymentEntry,
   Delivery,
   HallObservation,
+  JobDisplayStatus,
+  ConflictWarning,
+  DashboardActionItem,
 } from '@/types/database';
 
 export const WORKSPACE_ID = '11111111-1111-1111-1111-111111111111';
@@ -81,6 +84,7 @@ const INITIAL_JOB: Job = {
   special_requests: '신부 친할머니 거동이 불편하시니 대기실에서 가족 원판 사전 촬영 요청',
   must_shoot_notes: '플라워샤워 시 양가 부모님 환호 표정 및 축가 하객 반응 필수 캐치',
   deliverable_notes: '원본 전체 JPG + 대표 셀렉본 50장 우선 전달',
+  required_photographer_count: 2,
   status: 'scheduled',
   created_at: new Date('2026-09-18T10:00:00Z').toISOString(),
   updated_at: new Date('2026-09-18T10:00:00Z').toISOString(),
@@ -432,6 +436,7 @@ export const DataStore = {
     const state = loadState();
     const newJob: Job = {
       ...jobData,
+      required_photographer_count: jobData.required_photographer_count ?? 2,
       id: crypto.randomUUID ? crypto.randomUUID() : `job-${Date.now()}`,
       workspace_id: WORKSPACE_ID,
       created_at: new Date().toISOString(),
@@ -476,6 +481,7 @@ export const DataStore = {
       'special_requests',
       'must_shoot_notes',
       'title',
+      'required_photographer_count',
     ];
 
     for (const key of trackFields) {
@@ -1147,5 +1153,467 @@ export const DataStore = {
       unpaidSettlements,
       impendingDeliveries,
     };
+  },
+
+  // ============================================================================
+  // Phase 3: Calendar & Operations Dashboard 비즈니스 로직
+  // ============================================================================
+
+  // 1. 한국 표준시(Asia/Seoul) 기준 YYYY-MM-DD 반환
+  getKSTDateString(date = new Date()): string {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Seoul',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(date);
+  },
+
+  // 2. Job 파생 캘린더 표시 상태 (Derived Display Status)
+  getJobDisplayStatus(
+    jobId: string,
+    inputJob?: Job
+  ): {
+    status: JobDisplayStatus;
+    label: string;
+    variant: 'rose' | 'amber' | 'indigo' | 'emerald' | 'slate';
+  } {
+    const state = loadState();
+    const job = inputJob || state.jobs.find((j) => j.id === jobId);
+    if (!job) {
+      return { status: '배정 필요', label: '배정 필요', variant: 'rose' };
+    }
+
+    // ① 취소
+    if (job.status === 'cancelled') {
+      return { status: '취소', label: '취소', variant: 'slate' };
+    }
+
+    // ② 완료
+    if (job.status === 'completed') {
+      return { status: '완료', label: '완료', variant: 'emerald' };
+    }
+
+    const assignments = state.assignments.filter((a) => a.job_id === job.id);
+    const activeAssignments = assignments.filter(
+      (a) => a.assignment_status !== 'cancelled' && a.assignment_status !== 'declined'
+    );
+    const handovers = state.handovers.filter((h) =>
+      assignments.some((a) => a.id === h.assignment_id)
+    );
+
+    // ③ 검수 필요 (submitted 상태의 handover가 1건이라도 존재)
+    if (handovers.some((h) => h.status === 'submitted')) {
+      return { status: '검수 필요', label: '검수 필요', variant: 'rose' };
+    }
+
+    // ④ 원본 대기 (촬영 완료 후 아직 pending/보완요청 handover가 존재)
+    if (
+      job.status === 'shoot_completed' &&
+      handovers.some((h) => h.status === 'pending' || h.status === 'revision_requested')
+    ) {
+      return { status: '원본 대기', label: '원본 대기', variant: 'amber' };
+    }
+
+    // ⑤ 촬영 완료 (shoot_completed이고 원본 대기가 없거나 모두 검수 완료)
+    if (job.status === 'shoot_completed') {
+      return { status: '촬영 완료', label: '촬영 완료', variant: 'indigo' };
+    }
+
+    // ⑥ 배정 상태 계산 (scheduled / in_progress)
+    const reqCount = job.required_photographer_count ?? 2;
+    if (activeAssignments.length < reqCount) {
+      return { status: '배정 필요', label: '배정 필요', variant: 'rose' };
+    }
+
+    // 수락 대기 (proposed 상태가 1건이라도 있음)
+    if (activeAssignments.some((a) => a.assignment_status === 'proposed')) {
+      return { status: '수락 대기', label: '수락 대기', variant: 'amber' };
+    }
+
+    // 모든 배정 확정
+    return { status: '촬영 예정', label: '촬영 예정', variant: 'indigo' };
+  },
+
+  // 3. 작가 일정 시간대 충돌 감지
+  detectPhotographerConflicts(targetJobId?: string): ConflictWarning[] {
+    const state = loadState();
+    const timeToMinutes = (timeStr?: string | null, fallback = '12:00'): number => {
+      const val = (timeStr || fallback).trim();
+      const [hh, mm] = val.split(':').map((x) => parseInt(x, 10) || 0);
+      return hh * 60 + mm;
+    };
+
+    const conflicts: ConflictWarning[] = [];
+    const processedPairs = new Set<string>();
+
+    const validAssignments = state.assignments.filter((a) => {
+      if (a.assignment_status === 'cancelled' || a.assignment_status === 'declined') return false;
+      const job = state.jobs.find((j) => j.id === a.job_id);
+      return job && job.status !== 'cancelled';
+    });
+
+    for (let i = 0; i < validAssignments.length; i++) {
+      for (let j = i + 1; j < validAssignments.length; j++) {
+        const a1 = validAssignments[i];
+        const a2 = validAssignments[j];
+
+        if (a1.photographer_id === a2.photographer_id && a1.job_id !== a2.job_id) {
+          if (targetJobId && a1.job_id !== targetJobId && a2.job_id !== targetJobId) {
+            continue;
+          }
+
+          const job1 = state.jobs.find((job) => job.id === a1.job_id);
+          const job2 = state.jobs.find((job) => job.id === a2.job_id);
+          if (!job1 || !job2) continue;
+
+          if (job1.shoot_date === job2.shoot_date) {
+            const start1 = timeToMinutes(a1.participation_start, job1.arrival_time);
+            const end1 = timeToMinutes(a1.participation_end, job1.estimated_end_time || '16:00');
+            const start2 = timeToMinutes(a2.participation_start, job2.arrival_time);
+            const end2 = timeToMinutes(a2.participation_end, job2.estimated_end_time || '16:00');
+
+            if (start1 < end2 && start2 < end1) {
+              const pairKey = [a1.id, a2.id].sort().join('_');
+              if (!processedPairs.has(pairKey)) {
+                processedPairs.add(pairKey);
+                const photographer = state.photographers.find((p) => p.id === a1.photographer_id);
+                const pName = photographer ? photographer.name.replace(' (대표)', '') : '작가';
+
+                const fmtTime = (min: number) => {
+                  const h = Math.floor(min / 60);
+                  const m = min % 60;
+                  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+                };
+
+                conflicts.push({
+                  photographerId: a1.photographer_id,
+                  photographerName: pName,
+                  job1Id: job1.id,
+                  job1Title: job1.title,
+                  time1: `${fmtTime(start1)}~${fmtTime(end1)}`,
+                  job2Id: job2.id,
+                  job2Title: job2.title,
+                  time2: `${fmtTime(start2)}~${fmtTime(end2)}`,
+                  shootDate: job1.shoot_date,
+                });
+              }
+            }
+          }
+        }
+      }
+    }
+
+    return conflicts;
+  },
+
+  // 4. 미배정 촬영 조회
+  getUnassignedJobs(): { job: Job; requiredCount: number; currentCount: number; missingCount: number }[] {
+    const state = loadState();
+    const list: { job: Job; requiredCount: number; currentCount: number; missingCount: number }[] = [];
+
+    for (const job of state.jobs) {
+      if (job.status === 'cancelled' || job.status === 'completed') continue;
+      const req = job.required_photographer_count ?? 2;
+      const activeAssignments = state.assignments.filter(
+        (a) => a.job_id === job.id && a.assignment_status !== 'cancelled' && a.assignment_status !== 'declined'
+      );
+      if (activeAssignments.length < req) {
+        list.push({
+          job,
+          requiredCount: req,
+          currentCount: activeAssignments.length,
+          missingCount: req - activeAssignments.length,
+        });
+      }
+    }
+    return list;
+  },
+
+  // 5. Operations Dashboard: 8단계 우선순위 정렬된 액션 아이템 목록
+  getDashboardOperations(refDateStr?: string): DashboardActionItem[] {
+    const state = loadState();
+    const todayStr = refDateStr || this.getKSTDateString();
+
+    // 내일 날짜 계산
+    const [y, m, d] = todayStr.split('-').map(Number);
+    const tomorrowObj = new Date(y, m - 1, d + 1);
+    const tomorrowStr = `${tomorrowObj.getFullYear()}-${String(tomorrowObj.getMonth() + 1).padStart(2, '0')}-${String(
+      tomorrowObj.getDate()
+    ).padStart(2, '0')}`;
+
+    const items: DashboardActionItem[] = [];
+
+    // [우선순위 1] 오늘/내일 촬영 중 긴급 문제 (미배정 또는 작가 수락 미확인)
+    const urgentJobs = state.jobs.filter(
+      (j) => (j.shoot_date === todayStr || j.shoot_date === tomorrowStr) && j.status !== 'cancelled' && j.status !== 'completed'
+    );
+
+    const urgentJobIds = new Set<string>();
+
+    urgentJobs.forEach((job) => {
+      const activeAssignments = state.assignments.filter(
+        (a) => a.job_id === job.id && a.assignment_status !== 'cancelled' && a.assignment_status !== 'declined'
+      );
+      const req = job.required_photographer_count ?? 2;
+      const dateTag = job.shoot_date === todayStr ? '오늘' : '내일';
+
+      if (activeAssignments.length < req) {
+        urgentJobIds.add(job.id);
+        items.push({
+          id: `urgent-unassigned-${job.id}`,
+          priority: 1,
+          category: 'urgent',
+          categoryLabel: '오늘/내일 긴급',
+          title: `[${dateTag} 촬영] 작가 ${req - activeAssignments.length}명 미배정`,
+          description: `${job.title} (${job.ceremony_time}) — 예식이 임박했으나 필요 인원이 충원되지 않았습니다.`,
+          jobId: job.id,
+          linkUrl: `/jobs/${job.id}`,
+          badgeText: `${dateTag} 예식`,
+          badgeVariant: 'rose',
+          dateInfo: job.shoot_date,
+        });
+      }
+
+      const pendingProposals = activeAssignments.filter((a) => a.assignment_status === 'proposed');
+      if (pendingProposals.length > 0) {
+        urgentJobIds.add(job.id);
+        const names = pendingProposals
+          .map((a) => state.photographers.find((p) => p.id === a.photographer_id)?.name.replace(' (대표)', '') || '작가')
+          .join(', ');
+        items.push({
+          id: `urgent-proposed-${job.id}`,
+          priority: 1,
+          category: 'urgent',
+          categoryLabel: '오늘/내일 긴급',
+          title: `[${dateTag} 촬영] ${names} 작가 수락 대기`,
+          description: `${job.title} (${job.ceremony_time}) — 임박한 예식의 출동 확정이 필요합니다.`,
+          jobId: job.id,
+          linkUrl: `/jobs/${job.id}`,
+          badgeText: '수락 긴급',
+          badgeVariant: 'rose',
+          dateInfo: job.shoot_date,
+        });
+      }
+    });
+
+    // [우선순위 2] 일정 충돌 (Conflict)
+    const conflicts = this.detectPhotographerConflicts();
+    conflicts.forEach((c, idx) => {
+      items.push({
+        id: `conflict-${idx}`,
+        priority: 2,
+        category: 'conflict',
+        categoryLabel: '일정 충돌',
+        title: `${c.photographerName} 작가 동일 일자 시간대 중복`,
+        description: `${c.shootDate}: "${c.job1Title}" (${c.time1}) ↔ "${c.job2Title}" (${c.time2})`,
+        jobId: c.job1Id,
+        linkUrl: `/jobs/${c.job1Id}`,
+        badgeText: '일정 겹침',
+        badgeVariant: 'rose',
+        dateInfo: c.shootDate,
+      });
+    });
+
+    // [우선순위 3] 작가 미배정 (오늘/내일 제외된 일반 미배정 촬영)
+    const unassignedList = this.getUnassignedJobs();
+    unassignedList.forEach((u) => {
+      if (urgentJobIds.has(u.job.id)) return; // 1순위에서 이미 처리
+      items.push({
+        id: `unassigned-${u.job.id}`,
+        priority: 3,
+        category: 'unassigned',
+        categoryLabel: '작가 미배정',
+        title: `외주작가 ${u.missingCount}명 미배정`,
+        description: `${u.job.title} (${u.job.shoot_date}) — 필요인원 ${u.requiredCount}명 중 현재 ${u.currentCount}명 배정됨`,
+        jobId: u.job.id,
+        linkUrl: `/jobs/${u.job.id}`,
+        badgeText: '배정 필요',
+        badgeVariant: 'amber',
+        dateInfo: u.job.shoot_date,
+      });
+    });
+
+    // [우선순위 4] 작가 수락 대기 / 변경사항 미확인
+    state.assignments
+      .filter((a) => a.assignment_status === 'proposed')
+      .forEach((a) => {
+        const job = state.jobs.find((j) => j.id === a.job_id);
+        if (!job || job.status === 'completed' || job.status === 'cancelled') return;
+        if (urgentJobIds.has(job.id)) return; // 1순위에서 이미 처리
+
+        const photographer = state.photographers.find((p) => p.id === a.photographer_id);
+        const pName = photographer ? photographer.name.replace(' (대표)', '') : '작가';
+
+        items.push({
+          id: `proposed-${a.id}`,
+          priority: 4,
+          category: 'acceptance',
+          categoryLabel: '수락 대기',
+          title: `${pName} 배정 수락 대기`,
+          description: `${job.title} (${job.shoot_date}) — 작가의 배정 확인 및 수락이 필요합니다.`,
+          jobId: job.id,
+          linkUrl: `/jobs/${job.id}`,
+          badgeText: '수락 대기',
+          badgeVariant: 'amber',
+          dateInfo: job.shoot_date,
+        });
+      });
+
+    // [우선순위 5] 원본 지연 (due_at 경과, pending 또는 revision_requested)
+    state.handovers.forEach((h) => {
+      const assignment = state.assignments.find((a) => a.id === h.assignment_id);
+      if (!assignment) return;
+      const job = state.jobs.find((j) => j.id === assignment.job_id);
+      if (!job || job.status === 'completed' || job.status === 'cancelled') return;
+
+      if (h.due_at && (h.status === 'pending' || h.status === 'revision_requested')) {
+        const dueDatePart = h.due_at.split('T')[0];
+        if (dueDatePart < todayStr) {
+          const photographer = state.photographers.find((p) => p.id === assignment.photographer_id);
+          const pName = photographer ? photographer.name.replace(' (대표)', '') : '작가';
+
+          items.push({
+            id: `overdue-${h.id}`,
+            priority: 5,
+            category: 'handover_overdue',
+            categoryLabel: '원본 지연',
+            title: `${pName} 원본 전달 지연`,
+            description: `${job.title} — 제출 마감일(${dueDatePart})이 경과하였습니다.`,
+            jobId: job.id,
+            linkUrl: `/jobs/${job.id}`,
+            badgeText: '제출 지연',
+            badgeVariant: 'rose',
+            dateInfo: dueDatePart,
+          });
+        }
+      }
+    });
+
+    // [우선순위 6] 원본 검수 필요 (status === 'submitted')
+    state.handovers.forEach((h) => {
+      if (h.status === 'submitted') {
+        const assignment = state.assignments.find((a) => a.id === h.assignment_id);
+        if (!assignment) return;
+        const job = state.jobs.find((j) => j.id === assignment.job_id);
+        if (!job || job.status === 'completed' || job.status === 'cancelled') return;
+
+        const photographer = state.photographers.find((p) => p.id === assignment.photographer_id);
+        const pName = photographer ? photographer.name.replace(' (대표)', '') : '작가';
+
+        items.push({
+          id: `review-${h.id}`,
+          priority: 6,
+          category: 'handover_review',
+          categoryLabel: '원본 검수',
+          title: `${pName} 작가 원본 검수 필요`,
+          description: `${job.title} — 원본 링크가 제출되었습니다. 검수 후 완료 확정이 필요합니다.`,
+          jobId: job.id,
+          linkUrl: `/jobs/${job.id}`,
+          badgeText: '검수 필요',
+          badgeVariant: 'indigo',
+          dateInfo: job.shoot_date,
+        });
+      }
+    });
+
+    // [우선순위 7] 납품 기한 임박 / 지연
+    const threeDaysLater = new Date(y, m - 1, d + 3);
+    const threeDaysLaterStr = `${threeDaysLater.getFullYear()}-${String(threeDaysLater.getMonth() + 1).padStart(
+      2,
+      '0'
+    )}-${String(threeDaysLater.getDate()).padStart(2, '0')}`;
+
+    state.deliveries.forEach((dItem) => {
+      if (dItem.delivery_status === 'pending' && dItem.delivery_due_at) {
+        const job = state.jobs.find((j) => j.id === dItem.job_id);
+        if (!job || job.status === 'completed' || job.status === 'cancelled') return;
+
+        const isOverdue = dItem.delivery_due_at < todayStr;
+        const isImpending = dItem.delivery_due_at <= threeDaysLaterStr;
+
+        if (isOverdue || isImpending) {
+          items.push({
+            id: `delivery-${dItem.id}`,
+            priority: 7,
+            category: 'delivery_due',
+            categoryLabel: '납품 기한',
+            title: isOverdue ? '고객 납품 기한 초과' : '고객 납품 기한 임박',
+            description: `${job.title} — 마감일자: ${dItem.delivery_due_at}`,
+            jobId: job.id,
+            linkUrl: `/jobs/${job.id}`,
+            badgeText: isOverdue ? '납품 지연' : '납품 임박',
+            badgeVariant: isOverdue ? 'rose' : 'amber',
+            dateInfo: dItem.delivery_due_at,
+          });
+        }
+      }
+    });
+
+    // [우선순위 8] 외주비 미정산 잔액
+    state.settlements.forEach((s) => {
+      if (s.settlement_status === 'unpaid' || s.settlement_status === 'partially_paid') {
+        const assignment = state.assignments.find((a) => a.id === s.assignment_id);
+        if (!assignment) return;
+        const job = state.jobs.find((j) => j.id === assignment.job_id);
+        if (!job || job.status === 'cancelled') return;
+
+        const payments = state.payment_entries.filter((p) => p.settlement_id === s.id);
+        const paidTotal = payments.reduce((sum, p) => sum + p.payment_amount, 0);
+        const dueTotal = (s.agreed_amount || 0) + (s.additional_amount || 0);
+        const remaining = Math.max(0, dueTotal - paidTotal);
+
+        if (remaining > 0) {
+          const photographer = state.photographers.find((p) => p.id === assignment.photographer_id);
+          const pName = photographer ? photographer.name.replace(' (대표)', '') : '작가';
+
+          items.push({
+            id: `settle-${s.id}`,
+            priority: 8,
+            category: 'settlement_unpaid',
+            categoryLabel: '정산 미완료',
+            title: `${pName} ${remaining.toLocaleString()}원 미지급`,
+            description: `${job.title} (${job.shoot_date}) — 총 정산액 ${dueTotal.toLocaleString()}원 중 미지급 잔액`,
+            jobId: job.id,
+            linkUrl: `/jobs/${job.id}`,
+            badgeText: '미정산',
+            badgeVariant: 'amber',
+            dateInfo: job.shoot_date,
+          });
+        }
+      }
+    });
+
+    // 우선순위 1 -> 8 순 정렬
+    return items.sort((a, b) => a.priority - b.priority);
+  },
+
+  // 6. 오늘 촬영
+  getTodayJobs(refDateStr?: string): Job[] {
+    const state = loadState();
+    const todayStr = refDateStr || this.getKSTDateString();
+    return state.jobs
+      .filter((j) => j.shoot_date === todayStr && j.status !== 'cancelled')
+      .sort((a, b) => (a.ceremony_time || '').localeCompare(b.ceremony_time || ''));
+  },
+
+  // 7. 이번 주 촬영 (오늘 포함 7일간 또는 해당 주간의 촬영)
+  getThisWeekJobs(refDateStr?: string): Job[] {
+    const state = loadState();
+    const todayStr = refDateStr || this.getKSTDateString();
+    const [y, m, d] = todayStr.split('-').map(Number);
+    const endObj = new Date(y, m - 1, d + 7);
+    const endStr = `${endObj.getFullYear()}-${String(endObj.getMonth() + 1).padStart(2, '0')}-${String(
+      endObj.getDate()
+    ).padStart(2, '0')}`;
+
+    return state.jobs
+      .filter((j) => j.shoot_date >= todayStr && j.shoot_date <= endStr && j.status !== 'cancelled')
+      .sort((a, b) => {
+        if (a.shoot_date !== b.shoot_date) {
+          return a.shoot_date.localeCompare(b.shoot_date);
+        }
+        return (a.ceremony_time || '').localeCompare(b.ceremony_time || '');
+      });
   },
 };
