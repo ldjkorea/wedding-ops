@@ -52,7 +52,9 @@ export default function PhotographersPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-slate-900">작가 관리</h1>
-          <p className="text-xs text-slate-500">배정 가능한 팀/외주 작가 목록</p>
+          <p className="text-xs text-indigo-700 font-medium">
+            디어메모리 크루 (한민규 대표 외 팀/외주 작가진)
+          </p>
         </div>
         <button
           onClick={() => setIsModalOpen(true)}

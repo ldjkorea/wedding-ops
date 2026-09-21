@@ -631,7 +631,13 @@ export const DataStore = {
     // 해당 홀의 주의사항 관찰 기록 가져오기 (must_caution 또는 caution)
     const cautions = state.hall_observations
       .filter((o) => o.venue_space_id === job.venue_space_id && (o.category === 'must_caution' || o.category === 'caution'))
-      .map((o) => `- ${o.observation_text}${o.action_note ? ` (${o.action_note})` : ''}`);
+      .map((o) => `- [주의] ${o.observation_text}${o.action_note ? ` (${o.action_note})` : ''}`);
+
+    // 해당 홀의 디어메모리 크루 실전 팁 (tip 또는 advantage)
+    const tips = state.hall_observations
+      .filter((o) => o.venue_space_id === job.venue_space_id && (o.category === 'tip' || o.category === 'advantage'))
+      .slice(0, 2)
+      .map((o) => `- [크루팁] ${o.observation_text}${o.action_note ? ` (${o.action_note})` : ''}`);
 
     const shootDateObj = new Date(job.shoot_date);
     const dayNames = ['일요일', '월요일', '화요일', '수요일', '목요일', '금요일', '토요일'];
@@ -682,10 +688,23 @@ export const DataStore = {
     if (job.must_shoot_notes) {
       lines.push(`- 반드시 놓치면 안 되는 사항: ${job.must_shoot_notes}`);
     }
+
+    if (space) {
+      lines.push(``);
+      lines.push(`베뉴 스펙 & 조명 환경 (최신 팩트):`);
+      if (space.lighting_type) lines.push(`- 조명: ${space.lighting_type}`);
+      if (space.ceiling_height || space.aisle_info) {
+        lines.push(`- 규모: 천고 ${space.ceiling_height || '보통'} / 버진로드 ${space.aisle_info || '보통'}`);
+      }
+      if (space.photo_restrictions) lines.push(`- 규정: ${space.photo_restrictions}`);
+      if (space.parking_transport_info) lines.push(`- 주차/교통: ${space.parking_transport_info}`);
+    }
+
     lines.push(``);
     lines.push(`홀 주의사항 (현장 팁):`);
-    if (cautions.length > 0) {
-      cautions.forEach((c) => lines.push(c));
+    const allNotes = [...cautions, ...tips];
+    if (allNotes.length > 0) {
+      allNotes.forEach((c) => lines.push(c));
     } else {
       lines.push(`- 현장 조명 및 버진로드 동선 확인`);
     }
@@ -754,7 +773,7 @@ export const DataStore = {
     // 2. 최신 Job Pack 생성 시점 이후의 change_events 확인
     const latestCreatedTime = new Date(latestVersion.created_at).getTime();
     const newerChanges = state.change_events.filter(
-      (c) => c.job_id === jobId && new Date(c.created_at).getTime() >= latestCreatedTime
+      (c) => c.job_id === jobId && new Date(c.created_at).getTime() > latestCreatedTime
     );
 
     if (diffs.length > 0 || newerChanges.length > 0) {
