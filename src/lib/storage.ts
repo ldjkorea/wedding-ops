@@ -282,15 +282,35 @@ export const DataStore = {
 
   getAllPhotographers(): Photographer[] {
     const state = loadState();
-    return state.photographers;
+    // 활성(is_active = true) 작가를 기본적으로 상단에 정렬
+    return [...state.photographers].sort((a, b) => {
+      if (a.is_active !== b.is_active) {
+        return a.is_active ? -1 : 1;
+      }
+      return a.name.localeCompare(b.name, 'ko');
+    });
   },
 
-  addPhotographer(data: Omit<Photographer, 'id' | 'workspace_id' | 'created_at' | 'updated_at'>): Photographer {
+  getPhotographerById(id: string): Photographer | undefined {
+    return loadState().photographers.find((p) => p.id === id);
+  },
+
+  addPhotographer(data: {
+    name: string;
+    phone?: string | null;
+    notes?: string | null;
+    is_active?: boolean;
+    linked_user_id?: string | null;
+  }): Photographer {
     const state = loadState();
     const newPhotographer: Photographer = {
-      ...data,
       id: crypto.randomUUID ? crypto.randomUUID() : `p-${Date.now()}`,
       workspace_id: WORKSPACE_ID,
+      name: data.name.trim(),
+      phone: data.phone?.trim() || null,
+      notes: data.notes?.trim() || null,
+      linked_user_id: data.linked_user_id || null,
+      is_active: data.is_active !== undefined ? data.is_active : true,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
@@ -299,13 +319,24 @@ export const DataStore = {
     return newPhotographer;
   },
 
-  updatePhotographer(id: string, data: Partial<Photographer>): Photographer {
+  updatePhotographer(id: string, data: Partial<Omit<Photographer, 'id' | 'created_at'>>): Photographer {
     const state = loadState();
     const idx = state.photographers.findIndex((p) => p.id === id);
-    if (idx === -1) throw new Error('Photographer not found');
+    if (idx === -1) throw new Error(`Photographer not found: ${id}`);
+
+    // workspace 권한 검증 (타 워크스페이스 작가 수정 차단)
+    if (data.workspace_id && data.workspace_id !== WORKSPACE_ID) {
+      throw new Error('권한 오류: 다른 워크스페이스의 작가는 수정할 수 없습니다.');
+    }
+
+    const current = state.photographers[idx];
     state.photographers[idx] = {
-      ...state.photographers[idx],
-      ...data,
+      ...current,
+      name: data.name !== undefined ? data.name.trim() : current.name,
+      phone: data.phone !== undefined ? (data.phone?.trim() || null) : current.phone,
+      notes: data.notes !== undefined ? (data.notes?.trim() || null) : current.notes,
+      is_active: data.is_active !== undefined ? data.is_active : current.is_active,
+      linked_user_id: data.linked_user_id !== undefined ? data.linked_user_id : current.linked_user_id,
       updated_at: new Date().toISOString(),
     };
     saveState(state);

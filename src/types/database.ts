@@ -24,7 +24,7 @@ export type Photographer = {
   id: string;
   workspace_id: string;
   name: string;
-  phone: string;
+  phone?: string | null;
   notes?: string | null;
   linked_user_id?: string | null;
   is_active: boolean;

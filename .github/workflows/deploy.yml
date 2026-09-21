@@ -36,6 +36,9 @@ jobs:
       - name: Run acceptance tests
         run: npm run test:acceptance
 
+      - name: Run photographer lifecycle tests
+        run: npm run test:photographer
+
       - name: Build Next.js Static Export
         run: npm run build
         env:

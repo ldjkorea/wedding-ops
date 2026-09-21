@@ -121,7 +121,7 @@ export default function JobDetailClient({ id }: { id: string }) {
     setSpace(sList.find((s) => s.id === currentJob.venue_space_id) || null);
 
     setAssignments(DataStore.getAssignments(jobId));
-    setPhotographers(DataStore.getPhotographers());
+    setPhotographers(DataStore.getAllPhotographers());
     setJobPackVersions(DataStore.getJobPackVersions(jobId));
     setChangeEvents(DataStore.getChangeEvents(jobId));
     setHandovers(DataStore.getHandovers(jobId));
@@ -893,11 +893,13 @@ export default function JobDetailClient({ id }: { id: string }) {
               className="w-full text-sm px-3 py-2 border rounded-lg bg-white"
             >
               <option value="">작가를 선택하세요</option>
-              {photographers.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name} ({p.phone})
-                </option>
-              ))}
+              {photographers
+                .filter((p) => p.is_active)
+                .map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} {p.phone ? `(${p.phone})` : ''}
+                  </option>
+                ))}
             </select>
           </div>
           <div className="grid grid-cols-2 gap-3">
