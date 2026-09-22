@@ -152,9 +152,9 @@ export default function JobsPage() {
       {/* 1. 상단 타이틀 및 신규 등록 버튼 */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-slate-900">본식 촬영 일정</h1>
+          <h1 className="text-xl font-bold text-slate-900">촬영 일정</h1>
           <p className="text-xs text-slate-500 mt-0.5">
-            Job 기준 실시간 스케줄 및 업무 상태 뷰어
+            달력 또는 목록으로 전체 일정을 확인하세요
           </p>
         </div>
         <Link
@@ -165,6 +165,7 @@ export default function JobsPage() {
           촬영 등록
         </Link>
       </div>
+
 
       {/* 2. 상단 뷰 토글 [달력] [목록] 및 취소 숨기기 토글 */}
       <div className="flex items-center justify-between gap-2 flex-wrap">

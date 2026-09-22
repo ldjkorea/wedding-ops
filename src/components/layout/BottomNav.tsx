@@ -3,17 +3,17 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Calendar, Users, Building2, PlusCircle } from 'lucide-react';
+import { LayoutDashboard, Calendar, Users, MoreHorizontal, PlusCircle } from 'lucide-react';
 
 export function BottomNav() {
   const pathname = usePathname();
 
   const navItems = [
-    { href: '/', label: '대시보드', icon: LayoutDashboard },
+    { href: '/', label: '홈', icon: LayoutDashboard },
     { href: '/jobs', label: '촬영', icon: Calendar },
     { href: '/jobs/new', label: '신규등록', icon: PlusCircle, isPrimary: true },
-    { href: '/photographers', label: '작가관리', icon: Users },
-    { href: '/venues', label: '웨딩홀', icon: Building2 },
+    { href: '/photographers', label: '작가', icon: Users },
+    { href: '/more', label: '더보기', icon: MoreHorizontal },
   ];
 
   return (
